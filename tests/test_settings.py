@@ -1,7 +1,7 @@
 from zukuagent.core.settings import Settings
 
 
-def test_telegram_csv_parsing():
+def test_csv_list_parsing():
     settings = Settings(
         telegram_allowed_chat_ids="1, 2,3",
         telegram_allowed_pairing_devices="dev-a, dev-b",
