@@ -6,6 +6,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from zukuagent.settings import settings
+
 
 class AgentHeartbeat:
     """A proactive heartbeat mechanism for the ZukuAgent, inspired by OpenClaw.
@@ -15,7 +17,7 @@ class AgentHeartbeat:
     to escalate to a full agent turn (LLM call).
     """
 
-    def __init__(self, interval_minutes: int = 10, heartbeat_file: str = "HEARTBEAT.md") -> None:
+    def __init__(self, interval_minutes: int | None = None, heartbeat_file: str | None = None) -> None:
         """Initialize the heartbeat service.
 
         Args:
@@ -23,8 +25,8 @@ class AgentHeartbeat:
             heartbeat_file (str): The local file to check for pending tasks.
 
         """
-        self.interval_seconds = interval_minutes * 60
-        self.heartbeat_file = heartbeat_file
+        self.interval_seconds = (interval_minutes or settings.heartbeat_interval_minutes) * 60
+        self.heartbeat_file = heartbeat_file or settings.heartbeat_file
         self.is_running = False
         self._task: asyncio.Task | None = None
         self._last_pulse: datetime | None = None
@@ -43,7 +45,8 @@ class AgentHeartbeat:
 
         # Pattern 1: Check for HEARTBEAT.md presence and content
         path = Path(self.heartbeat_file)
-        if path.exists():
+        exists = await asyncio.to_thread(path.exists)
+        if exists:
             # Use to_thread for blocking file IO in async function to satisfy ruff ASYNC230
             content = await asyncio.to_thread(path.read_text)
             if content.strip():

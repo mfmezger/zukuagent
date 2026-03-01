@@ -1,10 +1,8 @@
 """Core agent implementation for ZukuAgent."""
 
 import asyncio
-import os
 
 import google.generativeai as genai
-from dotenv import load_dotenv
 from loguru import logger
 from openai import AsyncOpenAI
 from rich.console import Console
@@ -12,9 +10,7 @@ from rich.markdown import Markdown
 
 from zukuagent.audio_service import ParakeetTranscriptionService
 from zukuagent.heartbeat import AgentHeartbeat
-
-# Load environment variables
-load_dotenv()
+from zukuagent.settings import settings
 
 
 class ZukuAgent:
@@ -23,7 +19,7 @@ class ZukuAgent:
     LLM providers, and integrated services.
     """
 
-    def __init__(self, provider: str = "google", model_name: str | None = None) -> None:
+    def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
         """Initialize the agent with a specific provider and model.
 
         Args:
@@ -32,13 +28,16 @@ class ZukuAgent:
 
         """
         self.console = Console()
-        self.provider = provider.lower()
+        self.provider = (provider or settings.default_provider).lower()
         self.model_name = model_name
         self.history: list[dict[str, str]] = []
 
         # Initialize Services
         self.transcriber = ParakeetTranscriptionService()
-        self.heartbeat = AgentHeartbeat(interval_minutes=10)
+        self.heartbeat = AgentHeartbeat(
+            interval_minutes=settings.heartbeat_interval_minutes,
+            heartbeat_file=settings.heartbeat_file,
+        )
 
         # Provider-specific setup
         self._setup_provider()
@@ -48,25 +47,25 @@ class ZukuAgent:
     def _setup_provider(self) -> None:
         """Configure the chosen LLM provider."""
         if self.provider == "google":
-            api_key = os.getenv("GOOGLE_API_KEY")
+            api_key = settings.google_api_key
             if not api_key:
-                logger.error("GOOGLE_API_KEY not found in environment.")
+                logger.error("GOOGLE_API_KEY not found in settings.")
                 msg = "Missing GOOGLE_API_KEY"
                 raise ValueError(msg)
-            genai.configure(api_key=api_key)
-            self.model_name = self.model_name or "gemini-1.5-flash"
+            genai.configure(api_key=api_key.get_secret_value())
+            self.model_name = self.model_name or settings.google_model
             self.client = genai.GenerativeModel(self.model_name)
 
         elif self.provider == "openrouter":
-            api_key = os.getenv("OPENROUTER_API_KEY")
+            api_key = settings.openrouter_api_key
             if not api_key:
-                logger.error("OPENROUTER_API_KEY not found in environment.")
+                logger.error("OPENROUTER_API_KEY not found in settings.")
                 msg = "Missing OPENROUTER_API_KEY"
                 raise ValueError(msg)
-            self.model_name = self.model_name or "anthropic/claude-3-haiku"
+            self.model_name = self.model_name or settings.openrouter_model
             self.client = AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=api_key,
+                api_key=api_key.get_secret_value(),
             )
         else:
             msg = f"Unsupported provider: {self.provider}"
@@ -127,5 +126,5 @@ class ZukuAgent:
 
 if __name__ == "__main__":
     # Example usage
-    agent = ZukuAgent(provider=os.getenv("DEFAULT_PROVIDER", "google"))
+    agent = ZukuAgent()
     asyncio.run(agent.run())
