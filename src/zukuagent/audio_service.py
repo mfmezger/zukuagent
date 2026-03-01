@@ -5,6 +5,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from zukuagent.settings import settings
+
 try:
     import onnx_asr
 except ImportError:
@@ -19,7 +21,7 @@ class ParakeetTranscriptionService:
     smaller, faster on CPUs, and easier to install.
     """
 
-    def __init__(self, model_name: str = "nemo-parakeet-tdt-0.6b-v3") -> None:
+    def __init__(self, model_name: str | None = None) -> None:
         """Initialize the transcription service and loads the model into memory.
 
         Recommended Models:
@@ -30,11 +32,12 @@ class ParakeetTranscriptionService:
             msg = "Cannot initialize service: onnx_asr is not installed."
             raise RuntimeError(msg)
 
-        logger.info(f"Loading ONNX Parakeet ASR model '{model_name}'.")
+        self.model_name = model_name or settings.transcription_model
+        logger.info(f"Loading ONNX Parakeet ASR model '{self.model_name}'.")
         logger.info("This will download the model on the first run. Please wait...")
 
         # Load the pre-trained Parakeet model via huggingface hub & onnx
-        self.model = onnx_asr.load_model(model_name)
+        self.model = onnx_asr.load_model(self.model_name)
 
         logger.info("ONNX Model loaded successfully and is ready for transcription.")
 
@@ -74,7 +77,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test the ONNX Parakeet Transcription Service locally.")
     parser.add_argument("audio_file", help="Path to the audio file to transcribe.")
-    parser.add_argument("--model", default="nemo-parakeet-tdt-0.6b-v3", help="Parakeet ONNX model to use.")
+    parser.add_argument("--model", default=None, help="Parakeet ONNX model to use.")
 
     args = parser.parse_args()
 
