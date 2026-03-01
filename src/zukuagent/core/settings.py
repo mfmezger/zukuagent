@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_identity_files(cls, value: str | list[str] | None) -> list[str]:
         if value is None:
-            return ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
+            return cls.model_fields["identity_files"].get_default()
         if isinstance(value, list):
             return value
         if isinstance(value, str):
