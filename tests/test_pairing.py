@@ -1,4 +1,4 @@
-from zukuagent.pairing import PairingRegistry
+from zukuagent.core.pairing import PairingRegistry
 
 
 def test_pairing_rejects_device_not_in_allowlist(tmp_path):

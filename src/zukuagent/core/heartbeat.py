@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from zukuagent.settings import settings
+from zukuagent.core.settings import settings
 
 
 class AgentHeartbeat:

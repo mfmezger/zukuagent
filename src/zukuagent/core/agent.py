@@ -12,9 +12,9 @@ from openai import AsyncOpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 
-from zukuagent.audio_service import ParakeetTranscriptionService
-from zukuagent.heartbeat import AgentHeartbeat
-from zukuagent.settings import settings
+from zukuagent.core.heartbeat import AgentHeartbeat
+from zukuagent.core.settings import settings
+from zukuagent.services.audio_service import ParakeetTranscriptionService
 
 
 class ZukuAgent:
@@ -23,7 +23,6 @@ class ZukuAgent:
     LLM providers, and integrated services.
     """
 
-    IDENTITY_FILES: ClassVar[list[str]] = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
     PROJECT_MARKERS: ClassVar[tuple[str, ...]] = ("pyproject.toml", ".git")
 
     def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
@@ -60,9 +59,11 @@ class ZukuAgent:
         """Load identity and behavior rules from Markdown files."""
         identity_content = []
         base_path = self._find_project_root()
+        identity_dir = Path(settings.identity_dir)
+        identity_base = identity_dir if identity_dir.is_absolute() else base_path / identity_dir
 
-        for file_name in self.IDENTITY_FILES:
-            p = base_path / file_name
+        for file_name in settings.identity_files:
+            p = identity_base / file_name
             if p.exists():
                 with p.open(encoding="utf-8") as f:
                     identity_content.append(f.read())

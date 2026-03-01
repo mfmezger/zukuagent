@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from zukuagent.pairing import PairingRegistry
-from zukuagent.settings import settings
+from zukuagent.core.pairing import PairingRegistry
+from zukuagent.core.settings import settings
 
 if TYPE_CHECKING:
     from telegram import Update

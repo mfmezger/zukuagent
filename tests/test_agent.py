@@ -9,8 +9,8 @@ This module demonstrates the use of:
 import pytest
 from inline_snapshot import snapshot
 from dirty_equals import IsStr, IsInt, IsNow, IsUUID
-from zukuagent.agent import ZukuAgent
-from zukuagent.settings import settings
+from zukuagent.core.agent import ZukuAgent
+from zukuagent.core.settings import settings
 
 @pytest.mark.asyncio
 @pytest.mark.vcr
