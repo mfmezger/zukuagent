@@ -1,6 +1,6 @@
 """Configuration settings for ZukuAgent using pydantic-settings."""
 
-from pydantic import Field, SecretStr
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,23 +14,20 @@ class Settings(BaseSettings):
     )
 
     # API Keys
-    google_api_key: SecretStr | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
-    openrouter_api_key: SecretStr | None = Field(default=None, validation_alias="OPENROUTER_API_KEY")
+    google_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
 
     # Provider Settings
-    default_provider: str = Field(default="google", validation_alias="DEFAULT_PROVIDER")
-    google_model: str = Field(default="gemini-1.5-flash", validation_alias="GOOGLE_MODEL")
-    openrouter_model: str = Field(default="anthropic/claude-3-haiku", validation_alias="OPENROUTER_MODEL")
+    default_provider: str = "google"
+    google_model: str = "gemini-1.5-flash"
+    openrouter_model: str = "anthropic/claude-3-haiku"
 
     # Transcription Settings
-    transcription_model: str = Field(
-        default="nemo-parakeet-tdt-0.6b-v3",
-        validation_alias="TRANSCRIPTION_MODEL",
-    )
+    transcription_model: str = "nemo-parakeet-tdt-0.6b-v3"
 
     # Heartbeat Settings
-    heartbeat_interval_minutes: int = Field(default=10, validation_alias="HEARTBEAT_INTERVAL_MINUTES")
-    heartbeat_file: str = Field(default="HEARTBEAT.md", validation_alias="HEARTBEAT_FILE")
+    heartbeat_interval_minutes: int = 10
+    heartbeat_file: str = "HEARTBEAT.md"
 
 
 settings = Settings()
