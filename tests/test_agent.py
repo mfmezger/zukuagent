@@ -12,6 +12,83 @@ from dirty_equals import IsStr, IsInt, IsNow, IsUUID
 from zukuagent.core.agent import ZukuAgent
 from zukuagent.core.settings import settings
 
+
+@pytest.fixture
+def stub_runtime_services(monkeypatch):
+    monkeypatch.setattr("zukuagent.core.agent.ParakeetTranscriptionService", lambda: object())
+    monkeypatch.setattr("zukuagent.core.agent.AgentHeartbeat", lambda *args, **kwargs: object())
+
+
+def test_loads_skills_into_system_prompt(tmp_path, monkeypatch, stub_runtime_services):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(ZukuAgent, "_find_project_root", lambda self: tmp_path)
+    monkeypatch.setattr(settings, "identity_dir", ".")
+    monkeypatch.setattr(settings, "identity_files", ["IDENTITY.md"])
+
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("You are Zuku.", encoding="utf-8")
+    skill_dir = tmp_path / "skills" / "demo-skill"
+    skill_dir.mkdir(parents=True)
+    marker_text = "VERY LONG SKILL INSTRUCTION THAT SHOULD BE COMPRESSED LATER."
+    skill_dir.joinpath("SKILL.md").write_text(
+        f"""---
+name: demo-skill
+description: Demo skill for tests
+---
+
+# Demo Skill
+{marker_text}
+Step 1: Do the thing.
+Step 2: Verify the thing.
+""",
+        encoding="utf-8",
+    )
+
+    agent = ZukuAgent(provider="openrouter")
+
+    assert "Loaded Skills Context" in agent.system_prompt
+    assert marker_text in agent.system_prompt
+    assert agent.skills_compressed is False
+
+
+def test_compresses_skills_after_use(tmp_path, monkeypatch, stub_runtime_services):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(ZukuAgent, "_find_project_root", lambda self: tmp_path)
+    monkeypatch.setattr(settings, "identity_dir", ".")
+    monkeypatch.setattr(settings, "identity_files", ["IDENTITY.md"])
+
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("You are Zuku.", encoding="utf-8")
+    skill_dir = tmp_path / "skills" / "demo-skill"
+    skill_dir.mkdir(parents=True)
+    marker_text = "VERY LONG SKILL INSTRUCTION THAT SHOULD BE COMPRESSED LATER."
+    skill_dir.joinpath("SKILL.md").write_text(
+        f"""---
+name: demo-skill
+description: Demo skill for tests
+---
+
+# Demo Skill
+{marker_text}
+Step 1: Do the thing.
+Step 2: Verify the thing.
+""",
+        encoding="utf-8",
+    )
+
+    agent = ZukuAgent(provider="openrouter")
+    original_prompt = agent.system_prompt
+    agent._compress_skills_after_use()
+
+    assert agent.skills_compressed is True
+    assert "Compressed Skills Context" in agent.system_prompt
+    assert len(agent.system_prompt) < len(original_prompt)
+    assert "name: demo-skill" not in agent.system_prompt
+    assert "Skill `demo-skill`." in agent.system_prompt
+    assert agent.history[0]["content"] == agent.system_prompt
+
 @pytest.mark.asyncio
 @pytest.mark.vcr
 async def test_agent_initialization(monkeypatch):
