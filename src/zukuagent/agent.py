@@ -1,10 +1,12 @@
 """Core agent implementation for ZukuAgent."""
 
 import asyncio
+import inspect
 from pathlib import Path
 from typing import ClassVar
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from loguru import logger
 from openai import AsyncOpenAI
 from rich.console import Console
@@ -37,6 +39,7 @@ class ZukuAgent:
         self.model_name = model_name
         self.history: list[dict[str, str]] = []
         self.chat_session = None
+        self.google_aio_client = None
 
         # Load Identity
         self.system_prompt = self._load_identity()
@@ -85,14 +88,9 @@ class ZukuAgent:
                 logger.error("GOOGLE_API_KEY not found in settings.")
                 msg = "Missing GOOGLE_API_KEY"
                 raise ValueError(msg)
-            genai.configure(api_key=api_key.get_secret_value())
             self.model_name = self.model_name or settings.google_model
-            self.client = genai.GenerativeModel(
-                model_name=self.model_name,
-                system_instruction=self.system_prompt,
-            )
-            # Initialize a persistent chat session for Gemini
-            self.chat_session = self.client.start_chat(history=[])
+            self.client = genai.Client(api_key=api_key.get_secret_value())
+            self.google_aio_client = self.client.aio
 
         elif self.provider == "openrouter":
             api_key = settings.openrouter_api_key
@@ -115,7 +113,14 @@ class ZukuAgent:
         logger.info(f"Sending message to {self.provider}...")
 
         if self.provider == "google":
-            response = await asyncio.to_thread(self.chat_session.send_message, message)
+            if self.chat_session is None:
+                create_result = self.google_aio_client.chats.create(
+                    model=self.model_name,
+                    config=types.GenerateContentConfig(system_instruction=self.system_prompt),
+                )
+                self.chat_session = await create_result if inspect.isawaitable(create_result) else create_result
+            send_result = self.chat_session.send_message(message)
+            response = await send_result if inspect.isawaitable(send_result) else send_result
             response_text = response.text
 
         elif self.provider == "openrouter":
