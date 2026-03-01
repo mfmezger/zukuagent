@@ -10,6 +10,7 @@ import pytest
 from inline_snapshot import snapshot
 from dirty_equals import IsStr, IsInt, IsNow, IsUUID
 from zukuagent.agent import ZukuAgent
+from zukuagent.settings import settings
 
 @pytest.mark.asyncio
 @pytest.mark.vcr
@@ -22,7 +23,7 @@ async def test_agent_initialization(monkeypatch):
     agent = ZukuAgent(provider="google")
 
     assert agent.provider == snapshot("google")
-    assert agent.model_name == snapshot("gemini-1.5-flash")
+    assert agent.model_name == settings.google_model
 
 def test_pydantic_snapshot_demo():
     """Demonstrate snapshotting a structure with dynamic fields.
