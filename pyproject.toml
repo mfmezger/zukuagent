@@ -1,0 +1,29 @@
+[project]
+name = "zukuagent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Marc Fabian Mezger", email = "57255687+mfmezger@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "google-generativeai>=0.8.6",
+    "loguru>=0.7.3",
+    "onnx-asr[cpu,hub]>=0.10.2",
+    "openai>=2.24.0",
+    "python-dotenv>=1.2.2",
+    "rich>=14.3.3",
+]
+
+[project.scripts]
+zukuagent = "zukuagent:main"
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]

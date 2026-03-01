@@ -1,0 +1,131 @@
+"""Core agent implementation for ZukuAgent."""
+
+import asyncio
+import os
+
+import google.generativeai as genai
+from dotenv import load_dotenv
+from loguru import logger
+from openai import AsyncOpenAI
+from rich.console import Console
+from rich.markdown import Markdown
+
+from zukuagent.audio_service import ParakeetTranscriptionService
+from zukuagent.heartbeat import AgentHeartbeat
+
+# Load environment variables
+load_dotenv()
+
+
+class ZukuAgent:
+    """The core ZukuAgent class that manages the agent loop.
+
+    LLM providers, and integrated services.
+    """
+
+    def __init__(self, provider: str = "google", model_name: str | None = None) -> None:
+        """Initialize the agent with a specific provider and model.
+
+        Args:
+            provider (str): 'google' or 'openrouter'
+            model_name (str): Specific model ID (e.g., 'gemini-1.5-flash')
+
+        """
+        self.console = Console()
+        self.provider = provider.lower()
+        self.model_name = model_name
+        self.history: list[dict[str, str]] = []
+
+        # Initialize Services
+        self.transcriber = ParakeetTranscriptionService()
+        self.heartbeat = AgentHeartbeat(interval_minutes=10)
+
+        # Provider-specific setup
+        self._setup_provider()
+
+        logger.info(f"ZukuAgent initialized with provider: {self.provider}")
+
+    def _setup_provider(self) -> None:
+        """Configure the chosen LLM provider."""
+        if self.provider == "google":
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                logger.error("GOOGLE_API_KEY not found in environment.")
+                msg = "Missing GOOGLE_API_KEY"
+                raise ValueError(msg)
+            genai.configure(api_key=api_key)
+            self.model_name = self.model_name or "gemini-1.5-flash"
+            self.client = genai.GenerativeModel(self.model_name)
+
+        elif self.provider == "openrouter":
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                logger.error("OPENROUTER_API_KEY not found in environment.")
+                msg = "Missing OPENROUTER_API_KEY"
+                raise ValueError(msg)
+            self.model_name = self.model_name or "anthropic/claude-3-haiku"
+            self.client = AsyncOpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=api_key,
+            )
+        else:
+            msg = f"Unsupported provider: {self.provider}"
+            raise ValueError(msg)
+
+    async def chat(self, message: str) -> str:
+        """Send a message to the LLM and return the response."""
+        logger.info(f"Sending message to {self.provider}...")
+
+        if self.provider == "google":
+            # Simple state management for Gemini
+            chat_session = self.client.start_chat(history=[])  # You can map history here later
+            response = await asyncio.to_thread(chat_session.send_message, message)
+            response_text = response.text
+
+        elif self.provider == "openrouter":
+            self.history.append({"role": "user", "content": message})
+            response = await self.client.chat.completions.create(model=self.model_name, messages=self.history)
+            response_text = response.choices[0].message.content
+            self.history.append({"role": "assistant", "content": response_text})
+
+        return response_text
+
+    async def process_audio(self, audio_path: str) -> None:
+        """Transcribe audio and send it to the agent."""
+        text = self.transcriber.transcribe(audio_path)
+        if text:
+            self.console.print(f"[bold cyan]Transcribed:[/bold cyan] {text}")
+            response = await self.chat(text)
+            self.console.print(Markdown(response))
+        else:
+            logger.warning("No speech detected in audio file.")
+
+    async def run(self) -> None:
+        """Start the agent's main interactive loop."""
+        self.heartbeat.start()
+        self.console.print("[bold green]ZukuAgent is active. Type 'exit' to quit.[/bold green]")
+
+        try:
+            while True:
+                user_input = await asyncio.to_thread(input, "User > ")
+
+                if user_input.lower() in ["exit", "quit"]:
+                    break
+
+                if user_input.startswith("/audio "):
+                    audio_path = user_input.split(" ", 1)[1]
+                    await self.process_audio(audio_path)
+                    continue
+
+                response = await self.chat(user_input)
+                self.console.print(Markdown(response))
+
+        finally:
+            self.heartbeat.stop()
+            logger.info("ZukuAgent shutting down.")
+
+
+if __name__ == "__main__":
+    # Example usage
+    agent = ZukuAgent(provider=os.getenv("DEFAULT_PROVIDER", "google"))
+    asyncio.run(agent.run())

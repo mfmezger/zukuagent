@@ -1,0 +1,94 @@
+repos:
+  # Python linting and formatting tools
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.2
+    hooks:
+      - id: ruff
+        args:
+          - --fix
+      - id: ruff-format
+  # Basic file system and content validation hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args:
+          - --maxkb=5000
+      - id: check-ast
+      - id: check-docstring-first
+      - id: detect-private-key
+  # Format Python code blocks in documentation
+  - repo: https://github.com/adamchainz/blacken-docs
+    rev: 1.19.1
+    hooks:
+      - id: blacken-docs
+        additional_dependencies:
+          - black==24.10.0
+  # Upgrade Python syntax to newer versions
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.19.1
+    hooks:
+      - id: pyupgrade
+        args:
+          - --py311-plus
+  # Lint shell scripts for common issues
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        args:
+          - --severity=warning
+  # Validate GitHub Actions workflow files
+  - repo: https://github.com/sirosen/check-jsonschema
+    rev: 0.30.0
+    hooks:
+      - id: check-github-workflows
+        args:
+          - --verbose
+  # Remove unnecessary # noqa comments
+  - repo: https://github.com/asottile/yesqa
+    rev: v1.5.0
+    hooks:
+      - id: yesqa
+  # Detect typos in text files
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.28.1
+    hooks:
+      - id: typos
+  # Detect hardcoded secrets and sensitive information
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+  # Validate Makefiles
+  - repo: https://github.com/checkmake/checkmake.git
+    rev: 0.2.2
+    hooks:
+      - id: checkmake
+  # Lint YAML files for style and syntax issues
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+  # Format YAML files consistently
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.14.0
+    hooks:
+      - id: yamlfmt
+  # Enforce conventional commit messages
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+    stages: [commit-msg]
+    args: []
+  # Ensure uv lockfile is up to date
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.10.7
+    hooks:
+      - id: uv-lock
