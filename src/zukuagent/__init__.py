@@ -3,9 +3,9 @@
 import argparse
 import asyncio
 
-from zukuagent.agent import ZukuAgent
-from zukuagent.settings import settings
-from zukuagent.telegram_endpoint import TelegramEndpoint
+from zukuagent.core.agent import ZukuAgent
+from zukuagent.core.settings import settings
+from zukuagent.endpoints.telegram import TelegramEndpoint
 
 
 def main() -> None:

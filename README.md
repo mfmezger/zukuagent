@@ -2,14 +2,29 @@
 
 An AI agent framework with a modular identity system.
 
+## Project Layout
+
+```text
+src/zukuagent/
+  core/        # Agent core domain logic (agent, settings, heartbeat, pairing)
+  endpoints/   # External interfaces (Telegram, etc.)
+  services/    # Integrations like local ASR transcription
+config/identity/
+  IDENTITY.md
+  SOUL.md
+  AGENTS.md
+  USER.md
+```
+
 ## Identity System
-The agent's identity is defined by several Markdown files in the root directory:
+The agent's identity is defined by Markdown files in `config/identity/`:
 - `IDENTITY.md`: Who the agent is.
 - `SOUL.md`: Personality and philosophy.
 - `AGENTS.md`: Operational rules and standards.
 - `USER.md`: Personal context about the user.
 
 These files are automatically loaded and used as the system prompt for the agent.
+You can override location/order with `IDENTITY_DIR` and `IDENTITY_FILES` in `.env`.
 
 ## Development Setup
 

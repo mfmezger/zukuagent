@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     heartbeat_interval_minutes: int = 10
     heartbeat_file: str = "HEARTBEAT.md"
 
+    # Identity Settings
+    identity_dir: str = "config/identity"
+    identity_files: list[str] = Field(default_factory=lambda: ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"])
+
     # Endpoint Settings
     endpoint_mode: str = "cli"
 
@@ -67,6 +71,21 @@ class Settings(BaseSettings):
                 return []
             return [item.strip() for item in cleaned.split(",") if item.strip()]
         msg = "telegram_allowed_pairing_devices must be a comma-separated string or list[str]"
+        raise TypeError(msg)
+
+    @field_validator("identity_files", mode="before")
+    @classmethod
+    def _parse_identity_files(cls, value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return cls.model_fields["identity_files"].get_default()
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return []
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        msg = "identity_files must be a comma-separated string or list[str]"
         raise TypeError(msg)
 
 
