@@ -23,7 +23,7 @@ async def test_agent_initialization(monkeypatch):
     agent = ZukuAgent(provider="google")
 
     assert agent.provider == snapshot("google")
-    assert agent.model_name == snapshot(settings.google_model)
+    assert agent.model_name == settings.google_model
 
 def test_pydantic_snapshot_demo():
     """Demonstrate snapshotting a structure with dynamic fields.

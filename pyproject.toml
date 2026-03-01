@@ -13,6 +13,7 @@ dependencies = [
     "onnx-asr[cpu,hub]>=0.10.2",
     "openai>=2.24.0",
     "pydantic-settings>=2.13.1",
+    "python-telegram-bot>=22.5",
     "python-dotenv>=1.2.2",
     "rich>=14.3.3",
 ]
