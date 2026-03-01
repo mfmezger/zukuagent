@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from pathlib import Path
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -36,6 +37,9 @@ class ZukuAgent:
         self.model_name = model_name
         self.history: list[dict[str, str]] = []
 
+        # Load Identity
+        self.system_prompt = self._load_identity()
+
         # Initialize Services
         self.transcriber = ParakeetTranscriptionService()
         self.heartbeat = AgentHeartbeat(interval_minutes=10)
@@ -44,6 +48,20 @@ class ZukuAgent:
         self._setup_provider()
 
         logger.info(f"ZukuAgent initialized with provider: {self.provider}")
+
+    def _load_identity(self) -> str:
+        """Load identity and behavior rules from Markdown files."""
+        identity_files = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
+        identity_content = []
+        for file_name in identity_files:
+            p = Path(file_name)
+            if p.exists():
+                with p.open(encoding="utf-8") as f:
+                    identity_content.append(f.read())
+            else:
+                logger.warning(f"Identity file {file_name} not found.")
+
+        return "\n\n".join(identity_content) if identity_content else "You are Zuku, a helpful AI assistant."
 
     def _setup_provider(self) -> None:
         """Configure the chosen LLM provider."""
@@ -55,7 +73,10 @@ class ZukuAgent:
                 raise ValueError(msg)
             genai.configure(api_key=api_key)
             self.model_name = self.model_name or "gemini-1.5-flash"
-            self.client = genai.GenerativeModel(self.model_name)
+            self.client = genai.GenerativeModel(
+                model_name=self.model_name,
+                system_instruction=self.system_prompt,
+            )
 
         elif self.provider == "openrouter":
             api_key = os.getenv("OPENROUTER_API_KEY")
@@ -68,6 +89,7 @@ class ZukuAgent:
                 base_url="https://openrouter.ai/api/v1",
                 api_key=api_key,
             )
+            self.history = [{"role": "system", "content": self.system_prompt}]
         else:
             msg = f"Unsupported provider: {self.provider}"
             raise ValueError(msg)
