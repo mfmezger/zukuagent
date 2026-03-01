@@ -3,6 +3,7 @@
 import asyncio
 import os
 from pathlib import Path
+from typing import ClassVar
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -24,6 +25,8 @@ class ZukuAgent:
     LLM providers, and integrated services.
     """
 
+    IDENTITY_FILES: ClassVar[list[str]] = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
+
     def __init__(self, provider: str = "google", model_name: str | None = None) -> None:
         """Initialize the agent with a specific provider and model.
 
@@ -36,6 +39,7 @@ class ZukuAgent:
         self.provider = provider.lower()
         self.model_name = model_name
         self.history: list[dict[str, str]] = []
+        self.chat_session = None
 
         # Load Identity
         self.system_prompt = self._load_identity()
@@ -51,15 +55,18 @@ class ZukuAgent:
 
     def _load_identity(self) -> str:
         """Load identity and behavior rules from Markdown files."""
-        identity_files = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
         identity_content = []
-        for file_name in identity_files:
-            p = Path(file_name)
+        # Resolve path relative to this file's directory (src/zukuagent/agent.py)
+        # Project root is three levels up from this file.
+        base_path = Path(__file__).resolve().parent.parent.parent
+
+        for file_name in self.IDENTITY_FILES:
+            p = base_path / file_name
             if p.exists():
                 with p.open(encoding="utf-8") as f:
                     identity_content.append(f.read())
             else:
-                logger.warning(f"Identity file {file_name} not found.")
+                logger.warning(f"Identity file {p} not found.")
 
         return "\n\n".join(identity_content) if identity_content else "You are Zuku, a helpful AI assistant."
 
@@ -77,6 +84,8 @@ class ZukuAgent:
                 model_name=self.model_name,
                 system_instruction=self.system_prompt,
             )
+            # Initialize a persistent chat session for Gemini
+            self.chat_session = self.client.start_chat(history=[])
 
         elif self.provider == "openrouter":
             api_key = os.getenv("OPENROUTER_API_KEY")
@@ -89,7 +98,7 @@ class ZukuAgent:
                 base_url="https://openrouter.ai/api/v1",
                 api_key=api_key,
             )
-            self.history = [{"role": "system", "content": self.system_prompt}]
+            self.history.append({"role": "system", "content": self.system_prompt})
         else:
             msg = f"Unsupported provider: {self.provider}"
             raise ValueError(msg)
@@ -99,9 +108,9 @@ class ZukuAgent:
         logger.info(f"Sending message to {self.provider}...")
 
         if self.provider == "google":
-            # Simple state management for Gemini
-            chat_session = self.client.start_chat(history=[])  # You can map history here later
-            response = await asyncio.to_thread(chat_session.send_message, message)
+            if not self.chat_session:
+                self.chat_session = self.client.start_chat(history=[])
+            response = await asyncio.to_thread(self.chat_session.send_message, message)
             response_text = response.text
 
         elif self.provider == "openrouter":
