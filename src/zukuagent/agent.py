@@ -26,6 +26,7 @@ class ZukuAgent:
     """
 
     IDENTITY_FILES: ClassVar[list[str]] = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
+    PROJECT_MARKERS: ClassVar[tuple[str, ...]] = ("pyproject.toml", ".git")
 
     def __init__(self, provider: str = "google", model_name: str | None = None) -> None:
         """Initialize the agent with a specific provider and model.
@@ -56,9 +57,7 @@ class ZukuAgent:
     def _load_identity(self) -> str:
         """Load identity and behavior rules from Markdown files."""
         identity_content = []
-        # Resolve path relative to this file's directory (src/zukuagent/agent.py)
-        # Project root is three levels up from this file.
-        base_path = Path(__file__).resolve().parent.parent.parent
+        base_path = self._find_project_root()
 
         for file_name in self.IDENTITY_FILES:
             p = base_path / file_name
@@ -69,6 +68,15 @@ class ZukuAgent:
                 logger.warning(f"Identity file {p} not found.")
 
         return "\n\n".join(identity_content) if identity_content else "You are Zuku, a helpful AI assistant."
+
+    def _find_project_root(self) -> Path:
+        """Locate the project root by searching parent directories for known markers."""
+        start = Path(__file__).resolve().parent
+        for candidate in (start, *start.parents):
+            if any((candidate / marker).exists() for marker in self.PROJECT_MARKERS):
+                return candidate
+        logger.warning("Could not find project root marker; falling back to current working directory.")
+        return Path.cwd()
 
     def _setup_provider(self) -> None:
         """Configure the chosen LLM provider."""
@@ -108,8 +116,6 @@ class ZukuAgent:
         logger.info(f"Sending message to {self.provider}...")
 
         if self.provider == "google":
-            if not self.chat_session:
-                self.chat_session = self.client.start_chat(history=[])
             response = await asyncio.to_thread(self.chat_session.send_message, message)
             response_text = response.text
 
