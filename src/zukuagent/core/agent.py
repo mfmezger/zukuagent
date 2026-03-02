@@ -15,6 +15,7 @@ from rich.markdown import Markdown
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
+from zukuagent.services.tracing import LangfuseTracingService
 
 
 class ZukuAgent:
@@ -42,6 +43,7 @@ class ZukuAgent:
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
 
         self.transcriber = ParakeetTranscriptionService()
+        self.tracing = LangfuseTracingService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
             heartbeat_file=settings.heartbeat_file,
@@ -154,9 +156,8 @@ class ZukuAgent:
             # Google chat sessions keep system instructions at session creation time.
             # Reset so the next request picks up the compressed prompt.
             self.chat_session = None
-        elif self.provider == "openai-local":
-            if self._openai_messages and self._openai_messages[0]["role"] == "system":
-                self._openai_messages[0]["content"] = self.system_prompt
+        elif self.provider == "openai-local" and self._openai_messages and self._openai_messages[0]["role"] == "system":
+            self._openai_messages[0]["content"] = self.system_prompt
 
     def _find_project_root(self) -> Path:
         """Locate the project root by searching parent directories for known markers."""
@@ -192,30 +193,42 @@ class ZukuAgent:
 
     async def chat(self, message: str) -> str:
         """Send a message to the configured runtime and return the response."""
-        if self.provider == "google":
-            logger.info("Sending message to Google runtime...")
-            if self.chat_session is None:
-                create_result = self.google_aio_client.chats.create(
-                    model=self.model_name,
-                    config=types.GenerateContentConfig(system_instruction=self.system_prompt),
-                )
-                self.chat_session = await create_result if inspect.isawaitable(create_result) else create_result
+        trace_context = self.tracing.start_chat_trace(
+            provider=self.provider,
+            model=self.model_name or "unknown-model",
+            message=message,
+        )
 
-            send_result = self.chat_session.send_message(message)
-            response = await send_result if inspect.isawaitable(send_result) else send_result
-            response_text = response.text or ""
-            if not response_text:
-                response_text = "I could not produce a response from the Google runtime."
-        else:
-            self._openai_messages.append({"role": "user", "content": message})
-            response = await self._openai_client.chat.completions.create(
-                model=self.model_name,
-                messages=self._openai_messages,
-            )
-            response_text = response.choices[0].message.content or ""
-            if not response_text:
-                response_text = "I could not produce a response from the OpenAI-compatible runtime."
-            self._openai_messages.append({"role": "assistant", "content": response_text})
+        try:
+            if self.provider == "google":
+                logger.info("Sending message to Google runtime...")
+                if self.chat_session is None:
+                    create_result = self.google_aio_client.chats.create(
+                        model=self.model_name,
+                        config=types.GenerateContentConfig(system_instruction=self.system_prompt),
+                    )
+                    self.chat_session = await create_result if inspect.isawaitable(create_result) else create_result
+
+                send_result = self.chat_session.send_message(message)
+                response = await send_result if inspect.isawaitable(send_result) else send_result
+                response_text = response.text or ""
+                if not response_text:
+                    response_text = "I could not produce a response from the Google runtime."
+            else:
+                self._openai_messages.append({"role": "user", "content": message})
+                response = await self._openai_client.chat.completions.create(
+                    model=self.model_name,
+                    messages=self._openai_messages,
+                )
+                response_text = response.choices[0].message.content or ""
+                if not response_text:
+                    response_text = "I could not produce a response from the OpenAI-compatible runtime."
+                self._openai_messages.append({"role": "assistant", "content": response_text})
+        except Exception as exc:
+            self.tracing.end_chat_trace(trace_context, output="", error=exc)
+            raise
+
+        self.tracing.end_chat_trace(trace_context, output=response_text)
 
         self._compress_skills_after_use()
         return response_text
@@ -252,6 +265,7 @@ class ZukuAgent:
 
         finally:
             self.heartbeat.stop()
+            self.tracing.flush()
             logger.info("ZukuAgent shutting down.")
 
 

@@ -48,6 +48,15 @@ OPENAI_MODEL=llama3.2
 # OPENAI_API_KEY=local
 ```
 
+Langfuse tracing config (optional):
+
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_PUBLIC_KEY=pk-lf-local-zukuagent
+LANGFUSE_SECRET_KEY=sk-lf-local-zukuagent
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:
@@ -82,3 +91,20 @@ uv run zukuagent --endpoint telegram
 ```
 
 When pairing is required, each chat must execute `/pair <device_id>` and the `device_id` must be in `TELEGRAM_ALLOWED_PAIRING_DEVICES` (if configured).
+
+## Local Langfuse Container
+
+This repository includes a local Langfuse stack in `docker-compose.langfuse.yml` (Langfuse web + worker, Postgres, ClickHouse, Redis, MinIO).
+
+Start it with:
+
+```bash
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+Open Langfuse at `http://localhost:3000` and use the pre-seeded local project keys from the compose file in your `.env`:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-local-zukuagent
+LANGFUSE_SECRET_KEY=sk-lf-local-zukuagent
+```
