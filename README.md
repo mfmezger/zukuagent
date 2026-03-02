@@ -48,13 +48,11 @@ OPENAI_MODEL=llama3.2
 # OPENAI_API_KEY=local
 ```
 
-Langfuse tracing config (optional):
+OpenLIT tracing config (optional):
 
 ```bash
-LANGFUSE_ENABLED=true
-LANGFUSE_HOST=http://localhost:3000
-LANGFUSE_PUBLIC_KEY=pk-lf-local-zukuagent
-LANGFUSE_SECRET_KEY=sk-lf-local-zukuagent
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 ## Development Setup
@@ -92,19 +90,19 @@ uv run zukuagent --endpoint telegram
 
 When pairing is required, each chat must execute `/pair <device_id>` and the `device_id` must be in `TELEGRAM_ALLOWED_PAIRING_DEVICES` (if configured).
 
-## Local Langfuse Container
+## Local OpenLIT Container
 
-This repository includes a local Langfuse stack in `docker-compose.langfuse.yml` (Langfuse web + worker, Postgres, ClickHouse, Redis, MinIO).
+This repository includes a local OpenLIT stack in `docker-compose.openlit.yml` (OpenLIT + ClickHouse).
 
 Start it with:
 
 ```bash
-docker compose -f docker-compose.langfuse.yml up -d
+docker compose -f docker-compose.openlit.yml up -d
 ```
 
-Open Langfuse at `http://localhost:3000` and use the pre-seeded local project keys from the compose file in your `.env`:
+Open OpenLIT at `http://localhost:3000` and point the SDK at the local OTLP endpoint in your `.env`:
 
 ```bash
-LANGFUSE_PUBLIC_KEY=pk-lf-local-zukuagent
-LANGFUSE_SECRET_KEY=sk-lf-local-zukuagent
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```

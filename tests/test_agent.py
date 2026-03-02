@@ -96,7 +96,7 @@ class _FakeTracingService:
 def stub_runtime_services(monkeypatch):
     monkeypatch.setattr("zukuagent.core.agent.ParakeetTranscriptionService", lambda: object())
     monkeypatch.setattr("zukuagent.core.agent.AgentHeartbeat", lambda *args, **kwargs: object())
-    monkeypatch.setattr("zukuagent.core.agent.LangfuseTracingService", _FakeTracingService)
+    monkeypatch.setattr("zukuagent.core.agent.OpenlitTracingService", _FakeTracingService)
 
 
 @pytest.fixture

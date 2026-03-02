@@ -15,7 +15,7 @@ from rich.markdown import Markdown
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
-from zukuagent.services.tracing import LangfuseTracingService
+from zukuagent.services.tracing import OpenlitTracingService
 
 
 class ZukuAgent:
@@ -43,7 +43,7 @@ class ZukuAgent:
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
 
         self.transcriber = ParakeetTranscriptionService()
-        self.tracing = LangfuseTracingService()
+        self.tracing = OpenlitTracingService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
             heartbeat_file=settings.heartbeat_file,

@@ -49,10 +49,8 @@ class Settings:
     google_model: str = "gemini-2.5-flash"
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "http://localhost:11434/v1"
-    langfuse_enabled: bool | str = False
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-    langfuse_host: str = "http://localhost:3000"
+    openlit_enabled: bool | str = False
+    openlit_otlp_endpoint: str = "http://localhost:4318"
 
     # Transcription Settings
     transcription_model: str = "nemo-parakeet-tdt-0.6b-v3"
@@ -83,7 +81,7 @@ class Settings:
         if not parsed_identity:
             parsed_identity = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
         self.identity_files = parsed_identity
-        self.langfuse_enabled = _parse_bool(self.langfuse_enabled, default=False)
+        self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
 
     @classmethod
@@ -97,10 +95,8 @@ class Settings:
             google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
-            langfuse_enabled=os.getenv("LANGFUSE_ENABLED", "false"),
-            langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
-            langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
-            langfuse_host=os.getenv("LANGFUSE_HOST", "http://localhost:3000"),
+            openlit_enabled=os.getenv("OPENLIT_ENABLED", "false"),
+            openlit_otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
             transcription_model=os.getenv("TRANSCRIPTION_MODEL", "nemo-parakeet-tdt-0.6b-v3"),
             heartbeat_interval_minutes=int(os.getenv("HEARTBEAT_INTERVAL_MINUTES", "10")),
             heartbeat_file=os.getenv("HEARTBEAT_FILE", "HEARTBEAT.md"),
