@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import json
 from pathlib import Path
 from typing import ClassVar
 
@@ -15,6 +16,7 @@ from rich.markdown import Markdown
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
+from zukuagent.services.sandbox_service import MontySandboxService
 
 
 class ZukuAgent:
@@ -26,6 +28,7 @@ class ZukuAgent:
     PROJECT_MARKERS: ClassVar[tuple[str, ...]] = ("pyproject.toml", ".git")
     SKILLS_DIR: ClassVar[str] = "skills"
     SKILL_FILE_NAME: ClassVar[str] = "SKILL.md"
+    SANDBOX_TOOL_NAME: ClassVar[str] = "execute_python_sandbox"
 
     def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
         """Initialize the agent with a specific provider and model.
@@ -51,6 +54,7 @@ class ZukuAgent:
 
         # Initialize Services
         self.transcriber = ParakeetTranscriptionService()
+        self.sandbox = MontySandboxService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
             heartbeat_file=settings.heartbeat_file,
@@ -216,12 +220,116 @@ class ZukuAgent:
 
         elif self.provider == "openrouter":
             self.history.append({"role": "user", "content": message})
-            response = await self.client.chat.completions.create(model=self.model_name, messages=self.history)
-            response_text = response.choices[0].message.content
-            self.history.append({"role": "assistant", "content": response_text})
+            response_text = await self._chat_openrouter_with_tools()
 
         self._compress_skills_after_use()
         return response_text
+
+    async def _chat_openrouter_with_tools(self) -> str:
+        """Run one OpenRouter turn, resolving tool calls when requested."""
+        max_tool_rounds = 3
+        for _ in range(max_tool_rounds):
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=self.history,
+                tools=self._openrouter_tools(),
+                tool_choice="auto",
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+
+            if not tool_calls:
+                response_text = message.content or ""
+                self.history.append({"role": "assistant", "content": response_text})
+                return response_text
+
+            assistant_message = {
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments,
+                        },
+                    }
+                    for tool_call in tool_calls
+                ],
+            }
+            self.history.append(assistant_message)
+
+            for tool_call in tool_calls:
+                tool_payload = self._run_tool_call(tool_call.function.name, tool_call.function.arguments)
+                self.history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(tool_payload),
+                    }
+                )
+
+        msg = "Tool call loop exceeded the maximum number of rounds."
+        raise RuntimeError(msg)
+
+    def _openrouter_tools(self) -> list[dict]:
+        """Return function tool definitions for OpenRouter."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": self.SANDBOX_TOOL_NAME,
+                    "description": "Execute provided Python code in a Monty sandbox.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Python code to execute inside the sandbox.",
+                            },
+                            "inputs": {
+                                "type": "object",
+                                "description": "Optional inputs available to the sandboxed program.",
+                            },
+                        },
+                        "required": ["code"],
+                    },
+                },
+            }
+        ]
+
+    def _run_tool_call(self, tool_name: str, arguments_json: str) -> dict[str, object]:
+        """Execute a single tool call and return structured output."""
+        if tool_name != self.SANDBOX_TOOL_NAME:
+            return {"ok": False, "error": f"Unsupported tool: {tool_name}"}
+
+        try:
+            raw_args = json.loads(arguments_json) if arguments_json else {}
+        except json.JSONDecodeError as exc:
+            return {"ok": False, "error": f"Invalid tool arguments JSON: {exc}"}
+
+        code = raw_args.get("code")
+        if not isinstance(code, str) or not code.strip():
+            return {"ok": False, "error": "Missing required string argument: code"}
+
+        inputs = raw_args.get("inputs")
+        if inputs is not None and not isinstance(inputs, dict):
+            return {"ok": False, "error": "inputs must be an object if provided"}
+
+        try:
+            result = self.sandbox.run_code(code=code, inputs=inputs)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+        output = result.output
+        serialized_output = output if isinstance(output, str) else repr(output)
+
+        return {
+            "ok": True,
+            "output": serialized_output,
+            "duration_ms": round(result.duration_ms, 3),
+        }
 
     async def process_audio(self, audio_path: str) -> None:
         """Transcribe audio and send it to the agent."""
