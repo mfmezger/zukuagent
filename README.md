@@ -26,6 +26,28 @@ The agent's identity is defined by Markdown files in `config/identity/`:
 These files are automatically loaded and used as the system prompt for the agent.
 You can override location/order with `IDENTITY_DIR` and `IDENTITY_FILES` in `.env`.
 
+## Runtime
+Two runtime providers are supported:
+
+- `google`: direct Google GenAI chat session.
+- `openai-local`: any OpenAI-compatible local endpoint (Ollama, LM Studio, vLLM, etc.).
+
+Google config:
+
+```bash
+GOOGLE_API_KEY=your_key
+GOOGLE_MODEL=gemini-2.5-flash
+```
+
+OpenAI-compatible local config:
+
+```bash
+DEFAULT_PROVIDER=openai-local
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=llama3.2
+# OPENAI_API_KEY=local
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:

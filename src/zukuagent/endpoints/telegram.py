@@ -13,19 +13,25 @@ if TYPE_CHECKING:
     from telegram import Update
     from telegram.ext import ContextTypes
 
-MessageHandler = Callable[[str], Awaitable[str]]
+try:
+    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler as TelegramMessageHandler, filters
+except ImportError:  # pragma: no cover - optional dependency
+    ApplicationBuilder = None
+    CommandHandler = None
+    TelegramMessageHandler = None
+    filters = None
+
+MessageCallback = Callable[[str], Awaitable[str]]
 
 
 class TelegramEndpoint:
     """Expose ZukuAgent over Telegram chat."""
 
-    def __init__(self, message_handler: MessageHandler) -> None:
+    def __init__(self, message_handler: MessageCallback) -> None:
         """Build Telegram application and configure access controls."""
-        try:
-            from telegram.ext import ApplicationBuilder
-        except ImportError as exc:
+        if ApplicationBuilder is None:
             msg = "python-telegram-bot is required for Telegram endpoint support."
-            raise RuntimeError(msg) from exc
+            raise RuntimeError(msg)
 
         token = settings.telegram_bot_token
         if not token:
@@ -39,15 +45,17 @@ class TelegramEndpoint:
             storage_path=settings.telegram_pairings_file,
             allowed_devices=settings.telegram_allowed_pairing_devices,
         )
-        self.app = ApplicationBuilder().token(token.get_secret_value()).build()
+        self.app = ApplicationBuilder().token(token).build()
 
     def register_handlers(self) -> None:
         """Attach Telegram command and message handlers."""
-        from telegram.ext import CommandHandler, MessageHandler, filters
+        if CommandHandler is None or TelegramMessageHandler is None or filters is None:
+            msg = "python-telegram-bot is required for Telegram endpoint support."
+            raise RuntimeError(msg)
 
         self.app.add_handler(CommandHandler("start", self._on_start))
         self.app.add_handler(CommandHandler("pair", self._on_pair))
-        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
+        self.app.add_handler(TelegramMessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
 
     async def run(self) -> None:
         """Run Telegram bot in long-polling mode."""
