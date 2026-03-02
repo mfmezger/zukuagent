@@ -1,4 +1,4 @@
-"""Core agent implementation for ZukuAgent."""
+"""Core agent implementation for ZukuAgent without agent frameworks."""
 
 import asyncio
 import inspect
@@ -18,48 +18,43 @@ from zukuagent.services.audio_service import ParakeetTranscriptionService
 
 
 class ZukuAgent:
-    """The core ZukuAgent class that manages the agent loop.
-
-    LLM providers, and integrated services.
-    """
+    """The core ZukuAgent class that manages chat, skills, and runtime services."""
 
     PROJECT_MARKERS: ClassVar[tuple[str, ...]] = ("pyproject.toml", ".git")
     SKILLS_DIR: ClassVar[str] = "skills"
     SKILL_FILE_NAME: ClassVar[str] = "SKILL.md"
 
     def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
-        """Initialize the agent with a specific provider and model.
+        """Initialize the agent.
 
         Args:
-            provider (str): 'google' or 'openrouter'
-            model_name (str): Specific model ID (e.g., 'gemini-1.5-flash')
+            provider: Optional runtime override. Supports "google" and "openai-local".
+            model_name: Optional model override.
 
         """
         self.console = Console()
         self.provider = (provider or settings.default_provider).lower()
         self.model_name = model_name
-        self.history: list[dict[str, str]] = []
-        self.chat_session = None
-        self.google_aio_client = None
         self.skills_compressed = False
         self.project_root = self._find_project_root()
         self.base_prompt = self._load_base_identity()
         self.skill_contexts = self._load_skills()
-
-        # Load Identity and Skills
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
 
-        # Initialize Services
         self.transcriber = ParakeetTranscriptionService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
             heartbeat_file=settings.heartbeat_file,
         )
 
-        # Provider-specific setup
-        self._setup_provider()
+        self.client: object | None = None
+        self.google_aio_client = None
+        self.chat_session = None
+        self._openai_client: AsyncOpenAI | None = None
+        self._openai_messages: list[dict[str, str]] = []
 
-        logger.info(f"ZukuAgent initialized with provider: {self.provider}")
+        self._setup_provider()
+        logger.info("ZukuAgent initialized with runtime provider: {}", self.provider)
 
     def _load_base_identity(self) -> str:
         """Load identity and behavior rules from project root markdown files."""
@@ -74,7 +69,7 @@ class ZukuAgent:
                 with p.open(encoding="utf-8") as f:
                     identity_content.append(f.read())
             else:
-                logger.warning(f"Identity file {p} not found.")
+                logger.warning("Identity file {} not found.", p)
 
         return "\n\n".join(identity_content) if identity_content else "You are Zuku, a helpful AI assistant."
 
@@ -155,12 +150,13 @@ class ZukuAgent:
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=True)
         logger.info("Compressed loaded skills for ongoing conversations.")
 
-        if self.provider == "openrouter" and self.history and self.history[0]["role"] == "system":
-            self.history[0]["content"] = self.system_prompt
         if self.provider == "google":
             # Google chat sessions keep system instructions at session creation time.
             # Reset so the next request picks up the compressed prompt.
             self.chat_session = None
+        elif self.provider == "openai-local":
+            if self._openai_messages and self._openai_messages[0]["role"] == "system":
+                self._openai_messages[0]["content"] = self.system_prompt
 
     def _find_project_root(self) -> Path:
         """Locate the project root by searching parent directories for known markers."""
@@ -172,53 +168,54 @@ class ZukuAgent:
         return Path.cwd()
 
     def _setup_provider(self) -> None:
-        """Configure the chosen LLM provider."""
+        """Configure the chosen runtime provider."""
+        if self.provider not in {"google", "openai-local"}:
+            msg = f"Unsupported provider: {self.provider}. Supported providers are: google, openai-local"
+            raise ValueError(msg)
+
         if self.provider == "google":
             api_key = settings.google_api_key
             if not api_key:
                 logger.error("GOOGLE_API_KEY not found in settings.")
                 msg = "Missing GOOGLE_API_KEY"
                 raise ValueError(msg)
-            self.model_name = self.model_name or settings.google_model
-            self.client = genai.Client(api_key=api_key.get_secret_value())
-            self.google_aio_client = self.client.aio
 
-        elif self.provider == "openrouter":
-            api_key = settings.openrouter_api_key
-            if not api_key:
-                logger.error("OPENROUTER_API_KEY not found in settings.")
-                msg = "Missing OPENROUTER_API_KEY"
-                raise ValueError(msg)
-            self.model_name = self.model_name or settings.openrouter_model
-            self.client = AsyncOpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=api_key.get_secret_value(),
-            )
-            self.history.append({"role": "system", "content": self.system_prompt})
-        else:
-            msg = f"Unsupported provider: {self.provider}"
-            raise ValueError(msg)
+            self.model_name = self.model_name or settings.google_model
+            self.client = genai.Client(api_key=api_key)
+            self.google_aio_client = self.client.aio
+            return
+
+        self.model_name = self.model_name or settings.openai_model
+        api_key = settings.openai_api_key or "local"
+        self._openai_client = AsyncOpenAI(base_url=settings.openai_base_url, api_key=api_key)
+        self._openai_messages = [{"role": "system", "content": self.system_prompt}]
 
     async def chat(self, message: str) -> str:
-        """Send a message to the LLM and return the response."""
-        logger.info(f"Sending message to {self.provider}...")
-
+        """Send a message to the configured runtime and return the response."""
         if self.provider == "google":
+            logger.info("Sending message to Google runtime...")
             if self.chat_session is None:
                 create_result = self.google_aio_client.chats.create(
                     model=self.model_name,
                     config=types.GenerateContentConfig(system_instruction=self.system_prompt),
                 )
                 self.chat_session = await create_result if inspect.isawaitable(create_result) else create_result
+
             send_result = self.chat_session.send_message(message)
             response = await send_result if inspect.isawaitable(send_result) else send_result
-            response_text = response.text
-
-        elif self.provider == "openrouter":
-            self.history.append({"role": "user", "content": message})
-            response = await self.client.chat.completions.create(model=self.model_name, messages=self.history)
-            response_text = response.choices[0].message.content
-            self.history.append({"role": "assistant", "content": response_text})
+            response_text = response.text or ""
+            if not response_text:
+                response_text = "I could not produce a response from the Google runtime."
+        else:
+            self._openai_messages.append({"role": "user", "content": message})
+            response = await self._openai_client.chat.completions.create(
+                model=self.model_name,
+                messages=self._openai_messages,
+            )
+            response_text = response.choices[0].message.content or ""
+            if not response_text:
+                response_text = "I could not produce a response from the OpenAI-compatible runtime."
+            self._openai_messages.append({"role": "assistant", "content": response_text})
 
         self._compress_skills_after_use()
         return response_text
@@ -259,6 +256,5 @@ class ZukuAgent:
 
 
 if __name__ == "__main__":
-    # Example usage
     agent = ZukuAgent()
     asyncio.run(agent.run())
