@@ -1,0 +1,32 @@
+services:
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: lightrag
+    restart: unless-stopped
+    env_file:
+      - .env.lightrag
+    environment:
+      - HOST=0.0.0.0
+      - PORT=9621
+      - WORKING_DIR=/app/data/lightrag
+    volumes:
+      - ./data/lightrag:/app/data/lightrag
+    ports:
+      - "9621:9621"
+  zukuagent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zukuagent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENDPOINT_MODE=telegram
+      # Planned LightRAG integration endpoint for zukuagent service code:
+      - LIGHTRAG_BASE_URL=http://lightrag:9621
+    depends_on:
+      - lightrag
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/zukuagent:/app/data
