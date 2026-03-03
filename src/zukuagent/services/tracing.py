@@ -34,14 +34,6 @@ class OpenlitTracingService:
             logger.exception("Failed to initialize OpenLIT instrumentation. Tracing is disabled.")
             self.enabled = False
 
-    def start_chat_trace(self, *, provider: str, model: str, message: str) -> dict[str, str]:
-        """No-op method kept for compatibility with existing chat instrumentation."""
-        return {"provider": provider, "model": model, "message": message}
-
-    def end_chat_trace(self, context: object, *, output: str, error: Exception | None = None) -> None:
-        """No-op method kept for compatibility with existing chat instrumentation."""
-        _ = (context, output, error)
-
     def flush(self) -> None:
         """Flush pending events when OpenLIT exposes a flush hook."""
         if not self.enabled or openlit is None:

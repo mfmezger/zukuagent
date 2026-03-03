@@ -76,17 +76,7 @@ class _FakeOpenAIClient:
 
 class _FakeTracingService:
     def __init__(self) -> None:
-        self.started: list[dict[str, str]] = []
-        self.ended: list[dict[str, str]] = []
         self.flushed = 0
-
-    def start_chat_trace(self, *, provider: str, model: str, message: str):
-        self.started.append({"provider": provider, "model": model, "message": message})
-        return {"id": "trace"}
-
-    def end_chat_trace(self, context, *, output: str, error=None):
-        _ = context
-        self.ended.append({"output": output, "error": "" if error is None else str(error)})
 
     def flush(self) -> None:
         self.flushed += 1
@@ -186,8 +176,6 @@ async def test_chat_uses_google_runtime(monkeypatch, stub_runtime_services, stub
     reply = await agent.chat("ping")
 
     assert reply == "google:ping"
-    assert agent.tracing.started[0]["provider"] == "google"
-    assert agent.tracing.ended[0]["output"] == "google:ping"
 
 
 @pytest.mark.asyncio
@@ -212,8 +200,6 @@ async def test_chat_uses_openai_local_runtime(monkeypatch, stub_runtime_services
     assert reply == "local final response"
     assert agent._openai_messages[0]["role"] == "system"
     assert agent._openai_client.calls[0]["model"] == "llama3.2"
-    assert agent.tracing.started[0]["provider"] == "openai-local"
-    assert agent.tracing.ended[0]["output"] == "local final response"
 
 
 def test_compress_updates_openai_system_message(tmp_path, monkeypatch, stub_runtime_services, stub_openai_client):

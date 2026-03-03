@@ -97,6 +97,8 @@ This repository includes a local OpenLIT stack in `docker-compose.openlit.yml` (
 Start it with:
 
 ```bash
+cp .env.example .env
+# Set a strong value for OPENLIT_DB_PASSWORD in .env
 docker compose -f docker-compose.openlit.yml up -d
 ```
 
@@ -105,6 +107,9 @@ Open OpenLIT at `http://localhost:3000` and point the SDK at the local OTLP endp
 ```bash
 OPENLIT_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OPENLIT_DB_PASSWORD=replace_with_a_strong_password
+# Optional: override pinned OpenLIT image tag
+# OPENLIT_IMAGE=ghcr.io/openlit/openlit:1.26.0
 ```
 
 ## Docker Compose (ZukuAgent + LightRAG)
