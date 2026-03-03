@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import os
 from pathlib import Path
 from typing import ClassVar
 
@@ -175,7 +176,7 @@ class ZukuAgent:
             raise ValueError(msg)
 
         if self.provider == "google":
-            api_key = settings.google_api_key
+            api_key = settings.google_api_key or os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 logger.error("GOOGLE_API_KEY not found in settings.")
                 msg = "Missing GOOGLE_API_KEY"
@@ -187,7 +188,7 @@ class ZukuAgent:
             return
 
         self.model_name = self.model_name or settings.openai_model
-        api_key = settings.openai_api_key or "local"
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY") or "local"
         self._openai_client = AsyncOpenAI(base_url=settings.openai_base_url, api_key=api_key)
         self._openai_messages = [{"role": "system", "content": self.system_prompt}]
 

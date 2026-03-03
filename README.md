@@ -106,3 +106,38 @@ Open OpenLIT at `http://localhost:3000` and point the SDK at the local OTLP endp
 OPENLIT_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
+
+## Docker Compose (ZukuAgent + LightRAG)
+
+This repository includes a `docker-compose.yml` that starts:
+- `lightrag` (LightRAG API server) on `http://localhost:9621`
+- `zukuagent` (Telegram endpoint)
+
+1. Copy and fill environment variables:
+
+```bash
+cp .env.example .env
+cp .env.lightrag.example .env.lightrag
+```
+
+2. Start the stack:
+
+```bash
+docker compose up --build -d
+```
+
+3. Check status/logs:
+
+```bash
+docker compose ps
+docker compose logs -f lightrag
+docker compose logs -f zukuagent
+```
+
+Data is persisted in:
+- `./data/lightrag` for LightRAG indices/graph data
+- `./data/zukuagent` for local ZukuAgent runtime data
+
+Notes:
+- `LIGHTRAG_BASE_URL=http://lightrag:9621` is already injected into the `zukuagent` service in compose.
+- Current codebase does not yet query LightRAG from `ZukuAgent.chat()`; this compose setup wires the containers and networking so that service integration can be added cleanly.
