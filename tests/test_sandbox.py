@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -33,13 +34,13 @@ class FakeMonty:
     @classmethod
     def load(cls, payload):
         data = json.loads(payload.decode("utf-8"))
-        return cls(
-            data["code"],
-            inputs=data["inputs"],
-            external_functions=data["external_functions"],
-            type_check=data["type_check"],
-            type_check_stubs=data["type_check_stubs"],
-        )
+        instance = object.__new__(cls)
+        instance.code = data["code"]
+        instance.inputs = tuple(data["inputs"])
+        instance.external_functions = tuple(data["external_functions"])
+        instance.type_check = data["type_check"]
+        instance.type_check_stubs = data["type_check_stubs"]
+        return instance
 
     def run(self, *, inputs, external_functions):
         if "adder" in external_functions:
@@ -66,11 +67,25 @@ def test_monty_sandbox_caches_compiled_programs(monkeypatch):
     FakeMonty.init_calls = 0
     monkeypatch.setattr(sandbox_service, "pydantic_monty", SimpleNamespace(Monty=FakeMonty))
 
-    service = MontySandboxService()
+    service = MontySandboxService(enforce_limits=False)
     service.run_code("x + y", inputs={"x": 2, "y": 3})
     service.run_code("x + y", inputs={"x": 4, "y": 5})
 
-    assert FakeMonty.init_calls == 3
+    assert FakeMonty.init_calls == 1
+
+
+def test_monty_sandbox_times_out_with_limits(monkeypatch):
+    class SlowMonty(FakeMonty):
+        def run(self, *, inputs, external_functions):
+            _ = (inputs, external_functions)
+            time.sleep(0.5)
+            return "done"
+
+    monkeypatch.setattr(sandbox_service, "pydantic_monty", SimpleNamespace(Monty=SlowMonty))
+    service = MontySandboxService(execution_timeout_seconds=0.1, max_memory_mb=64, enforce_limits=True)
+
+    with pytest.raises(TimeoutError, match="timed out"):
+        service.run_code("x + y", inputs={"x": 2, "y": 3})
 
 
 def test_monty_sandbox_requires_dependency(monkeypatch):

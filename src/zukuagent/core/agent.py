@@ -28,6 +28,7 @@ class ZukuAgent:
     SKILLS_DIR: ClassVar[str] = "skills"
     SKILL_FILE_NAME: ClassVar[str] = "SKILL.md"
     SANDBOX_TOOL_NAME: ClassVar[str] = "execute_python_sandbox"
+    MAX_TOOL_ROUNDS: ClassVar[int] = 3
 
     def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
         """Initialize the agent.
@@ -249,8 +250,7 @@ class ZukuAgent:
 
     async def _chat_openrouter_with_tools(self) -> str:
         """Run one OpenRouter turn, resolving tool calls when requested."""
-        max_tool_rounds = 3
-        for _ in range(max_tool_rounds):
+        for _ in range(self.MAX_TOOL_ROUNDS):
             response = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=self.history,
@@ -269,7 +269,9 @@ class ZukuAgent:
                 "role": "assistant",
                 "content": message.content or "",
                 "tool_calls": [
-                    {
+                    tool_call.model_dump()
+                    if hasattr(tool_call, "model_dump")
+                    else {
                         "id": tool_call.id,
                         "type": "function",
                         "function": {
