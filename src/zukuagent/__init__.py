@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from zukuagent.core.agent import ZukuAgent
@@ -37,7 +38,7 @@ def main() -> None:
         sandbox = MontySandboxService(type_check=args.sandbox_type_check)
         result = sandbox.run_code(code)
         if result.output is not None:
-            pass
+            sys.stdout.write(f"{result.output}\n")
         return
 
     agent = ZukuAgent(provider=args.provider, model_name=args.model)
