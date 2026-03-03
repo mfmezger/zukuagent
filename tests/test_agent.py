@@ -74,10 +74,19 @@ class _FakeOpenAIClient:
         self.chat = _FakeOpenAIChat(self)
 
 
+class _FakeTracingService:
+    def __init__(self) -> None:
+        self.flushed = 0
+
+    def flush(self) -> None:
+        self.flushed += 1
+
+
 @pytest.fixture
 def stub_runtime_services(monkeypatch):
     monkeypatch.setattr("zukuagent.core.agent.ParakeetTranscriptionService", lambda: object())
     monkeypatch.setattr("zukuagent.core.agent.AgentHeartbeat", lambda *args, **kwargs: object())
+    monkeypatch.setattr("zukuagent.core.agent.OpenlitTracingService", _FakeTracingService)
 
 
 @pytest.fixture

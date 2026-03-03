@@ -48,6 +48,13 @@ OPENAI_MODEL=llama3.2
 # OPENAI_API_KEY=local
 ```
 
+OpenLIT tracing config (optional):
+
+```bash
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:
@@ -82,6 +89,28 @@ uv run zukuagent --endpoint telegram
 ```
 
 When pairing is required, each chat must execute `/pair <device_id>` and the `device_id` must be in `TELEGRAM_ALLOWED_PAIRING_DEVICES` (if configured).
+
+## Local OpenLIT Container
+
+This repository includes a local OpenLIT stack in `docker-compose.openlit.yml` (OpenLIT + ClickHouse).
+
+Start it with:
+
+```bash
+cp .env.example .env
+# Set a strong value for OPENLIT_DB_PASSWORD in .env
+docker compose -f docker-compose.openlit.yml up -d
+```
+
+Open OpenLIT at `http://localhost:3000` and point the SDK at the local OTLP endpoint in your `.env`:
+
+```bash
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OPENLIT_DB_PASSWORD=replace_with_a_strong_password
+# Optional: override pinned OpenLIT image tag
+# OPENLIT_IMAGE=ghcr.io/openlit/openlit:1.26.0
+```
 
 ## Docker Compose (ZukuAgent + LightRAG)
 

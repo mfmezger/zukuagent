@@ -11,6 +11,7 @@ dependencies = [
     "google-genai>=1.33.0",
     "loguru>=0.7.3",
     "onnx-asr[cpu,hub]>=0.10.2",
+    "openlit>=1.0.0",
     "openai>=2.24.0",
     "python-telegram-bot>=22.5",
     "python-dotenv>=1.2.2",

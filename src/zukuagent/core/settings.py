@@ -1,7 +1,7 @@
 """Configuration settings for ZukuAgent without framework dependencies."""
 
-from dataclasses import dataclass, field
 import os
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -49,6 +49,8 @@ class Settings:
     google_model: str = "gemini-2.5-flash"
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "http://localhost:11434/v1"
+    openlit_enabled: bool | str = False
+    openlit_otlp_endpoint: str = "http://localhost:4318"
 
     # Transcription Settings
     transcription_model: str = "nemo-parakeet-tdt-0.6b-v3"
@@ -59,9 +61,7 @@ class Settings:
 
     # Identity Settings
     identity_dir: str = "config/identity"
-    identity_files: list[str] | str | None = field(
-        default_factory=lambda: ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
-    )
+    identity_files: list[str] | str | None = field(default_factory=lambda: ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"])
 
     # Endpoint Settings
     endpoint_mode: str = "cli"
@@ -74,16 +74,19 @@ class Settings:
     telegram_pairings_file: str = ".telegram_pairings.json"
 
     def __post_init__(self) -> None:
+        """Normalize string-based env inputs into typed settings values."""
         self.telegram_allowed_chat_ids = _parse_csv_int_list(self.telegram_allowed_chat_ids)
         self.telegram_allowed_pairing_devices = _parse_csv_list(self.telegram_allowed_pairing_devices)
         parsed_identity = _parse_csv_list(self.identity_files)
         if not parsed_identity:
             parsed_identity = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
         self.identity_files = parsed_identity
+        self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
 
     @classmethod
     def from_env(cls) -> "Settings":
+        """Build settings from environment variables and `.env` file values."""
         load_dotenv()
         return cls(
             google_api_key=os.getenv("GOOGLE_API_KEY"),
@@ -92,6 +95,8 @@ class Settings:
             google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
+            openlit_enabled=os.getenv("OPENLIT_ENABLED", "false"),
+            openlit_otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
             transcription_model=os.getenv("TRANSCRIPTION_MODEL", "nemo-parakeet-tdt-0.6b-v3"),
             heartbeat_interval_minutes=int(os.getenv("HEARTBEAT_INTERVAL_MINUTES", "10")),
             heartbeat_file=os.getenv("HEARTBEAT_FILE", "HEARTBEAT.md"),

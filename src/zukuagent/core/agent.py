@@ -16,6 +16,7 @@ from rich.markdown import Markdown
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
+from zukuagent.services.tracing import OpenlitTracingService
 
 
 class ZukuAgent:
@@ -43,6 +44,7 @@ class ZukuAgent:
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
 
         self.transcriber = ParakeetTranscriptionService()
+        self.tracing = OpenlitTracingService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
             heartbeat_file=settings.heartbeat_file,
@@ -155,9 +157,8 @@ class ZukuAgent:
             # Google chat sessions keep system instructions at session creation time.
             # Reset so the next request picks up the compressed prompt.
             self.chat_session = None
-        elif self.provider == "openai-local":
-            if self._openai_messages and self._openai_messages[0]["role"] == "system":
-                self._openai_messages[0]["content"] = self.system_prompt
+        elif self.provider == "openai-local" and self._openai_messages and self._openai_messages[0]["role"] == "system":
+            self._openai_messages[0]["content"] = self.system_prompt
 
     def _find_project_root(self) -> Path:
         """Locate the project root by searching parent directories for known markers."""
@@ -253,6 +254,7 @@ class ZukuAgent:
 
         finally:
             self.heartbeat.stop()
+            self.tracing.flush()
             logger.info("ZukuAgent shutting down.")
 
 
