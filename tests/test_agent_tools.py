@@ -13,9 +13,23 @@ def stub_runtime_services(monkeypatch):
 
 
 def _tool_call(name: str, arguments: str, call_id: str = "call-1"):
-    return SimpleNamespace(
+    function = SimpleNamespace(name=name, arguments=arguments)
+
+    class _ToolCall(SimpleNamespace):
+        def model_dump(self):
+            return {
+                "id": self.id,
+                "type": "function",
+                "function": {
+                    "name": self.function.name,
+                    "arguments": self.function.arguments,
+                },
+            }
+
+    return _ToolCall(
         id=call_id,
-        function=SimpleNamespace(name=name, arguments=arguments),
+        function=function,
+        type="function",
     )
 
 

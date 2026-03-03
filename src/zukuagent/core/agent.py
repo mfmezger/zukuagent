@@ -268,19 +268,7 @@ class ZukuAgent:
             assistant_message = {
                 "role": "assistant",
                 "content": message.content or "",
-                "tool_calls": [
-                    tool_call.model_dump()
-                    if hasattr(tool_call, "model_dump")
-                    else {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments,
-                        },
-                    }
-                    for tool_call in tool_calls
-                ],
+                "tool_calls": [tool_call.model_dump() for tool_call in tool_calls],
             }
             self.history.append(assistant_message)
 
