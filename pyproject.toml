@@ -23,7 +23,7 @@ zukuagent = "zukuagent:main"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--record-mode=once"
+addopts = "--record-mode=once --cov=src --cov-report=term-missing --cov-fail-under=90"
 
 [build-system]
 requires = ["uv_build>=0.10.4,<0.11.0"]
@@ -36,5 +36,6 @@ dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.1.1",
     "pytest-recording>=0.13.4",
 ]

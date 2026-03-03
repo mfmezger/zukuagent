@@ -125,7 +125,7 @@ class AgentHeartbeat:
         }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Test script to demonstrate the heartbeat in action
     async def test_main() -> None:
         """Run a simple test loop for the heartbeat."""
