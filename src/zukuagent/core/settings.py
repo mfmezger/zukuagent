@@ -1,26 +1,56 @@
-"""Configuration settings for ZukuAgent using pydantic-settings."""
+"""Configuration settings for ZukuAgent without framework dependencies."""
 
-from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+from dataclasses import dataclass, field
+
+from dotenv import load_dotenv
 
 
-class Settings(BaseSettings):
+def _parse_csv_list(value: str | list[str] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    cleaned = value.strip()
+    if not cleaned:
+        return []
+    return [item.strip() for item in cleaned.split(",") if item.strip()]
+
+
+def _parse_csv_int_list(value: str | list[int] | None) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    cleaned = value.strip()
+    if not cleaned:
+        return []
+    return [int(item.strip()) for item in cleaned.split(",") if item.strip()]
+
+
+def _parse_bool(value: str | bool | None, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass
+class Settings:
     """Application settings for ZukuAgent."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
     # API Keys
-    google_api_key: SecretStr | None = None
-    openrouter_api_key: SecretStr | None = None
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
 
-    # Provider Settings
+    # Runtime Settings
     default_provider: str = "google"
-    google_model: str = "gemini-1.5-flash"
-    openrouter_model: str = "anthropic/claude-3-haiku"
+    google_model: str = "gemini-2.5-flash"
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "http://localhost:11434/v1"
+    openlit_enabled: bool | str = False
+    openlit_otlp_endpoint: str = "http://localhost:4318"
 
     # Transcription Settings
     transcription_model: str = "nemo-parakeet-tdt-0.6b-v3"
@@ -31,62 +61,54 @@ class Settings(BaseSettings):
 
     # Identity Settings
     identity_dir: str = "config/identity"
-    identity_files: list[str] = Field(default_factory=lambda: ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"])
+    identity_files: list[str] | str | None = field(default_factory=lambda: ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"])
 
     # Endpoint Settings
     endpoint_mode: str = "cli"
 
     # Telegram Settings
-    telegram_bot_token: SecretStr | None = None
-    telegram_allowed_chat_ids: list[int] = Field(default_factory=list)
-    telegram_allowed_pairing_devices: list[str] = Field(default_factory=list)
-    telegram_require_pairing: bool = True
+    telegram_bot_token: str | None = None
+    telegram_allowed_chat_ids: list[int] | str | None = field(default_factory=list)
+    telegram_allowed_pairing_devices: list[str] | str | None = field(default_factory=list)
+    telegram_require_pairing: bool | str = True
     telegram_pairings_file: str = ".telegram_pairings.json"
 
-    @field_validator("telegram_allowed_chat_ids", mode="before")
+    def __post_init__(self) -> None:
+        """Normalize string-based env inputs into typed settings values."""
+        self.telegram_allowed_chat_ids = _parse_csv_int_list(self.telegram_allowed_chat_ids)
+        self.telegram_allowed_pairing_devices = _parse_csv_list(self.telegram_allowed_pairing_devices)
+        parsed_identity = _parse_csv_list(self.identity_files)
+        if not parsed_identity:
+            parsed_identity = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
+        self.identity_files = parsed_identity
+        self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
+        self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
+
     @classmethod
-    def _parse_allowed_chat_ids(cls, value: str | list[int] | None) -> list[int]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if not cleaned:
-                return []
-            return [int(item.strip()) for item in cleaned.split(",") if item.strip()]
-        msg = "telegram_allowed_chat_ids must be a comma-separated string or list[int]"
-        raise TypeError(msg)
-
-    @field_validator("telegram_allowed_pairing_devices", mode="before")
-    @classmethod
-    def _parse_allowed_pairing_devices(cls, value: str | list[str] | None) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if not cleaned:
-                return []
-            return [item.strip() for item in cleaned.split(",") if item.strip()]
-        msg = "telegram_allowed_pairing_devices must be a comma-separated string or list[str]"
-        raise TypeError(msg)
-
-    @field_validator("identity_files", mode="before")
-    @classmethod
-    def _parse_identity_files(cls, value: str | list[str] | None) -> list[str]:
-        if value is None:
-            return cls.model_fields["identity_files"].get_default()
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if not cleaned:
-                return []
-            return [item.strip() for item in cleaned.split(",") if item.strip()]
-        msg = "identity_files must be a comma-separated string or list[str]"
-        raise TypeError(msg)
+    def from_env(cls) -> "Settings":
+        """Build settings from environment variables and `.env` file values."""
+        load_dotenv()
+        return cls(
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            default_provider=os.getenv("DEFAULT_PROVIDER", "google"),
+            google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            openai_base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
+            openlit_enabled=os.getenv("OPENLIT_ENABLED", "false"),
+            openlit_otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
+            transcription_model=os.getenv("TRANSCRIPTION_MODEL", "nemo-parakeet-tdt-0.6b-v3"),
+            heartbeat_interval_minutes=int(os.getenv("HEARTBEAT_INTERVAL_MINUTES", "10")),
+            heartbeat_file=os.getenv("HEARTBEAT_FILE", "HEARTBEAT.md"),
+            identity_dir=os.getenv("IDENTITY_DIR", "config/identity"),
+            identity_files=os.getenv("IDENTITY_FILES"),
+            endpoint_mode=os.getenv("ENDPOINT_MODE", "cli"),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            telegram_allowed_chat_ids=os.getenv("TELEGRAM_ALLOWED_CHAT_IDS"),
+            telegram_allowed_pairing_devices=os.getenv("TELEGRAM_ALLOWED_PAIRING_DEVICES"),
+            telegram_require_pairing=os.getenv("TELEGRAM_REQUIRE_PAIRING", "true"),
+            telegram_pairings_file=os.getenv("TELEGRAM_PAIRINGS_FILE", ".telegram_pairings.json"),
+        )
 
 
-settings = Settings()
+settings = Settings.from_env()

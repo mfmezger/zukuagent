@@ -71,7 +71,7 @@ class ParakeetTranscriptionService:
         return ""
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Simple CLI interface to test the service standalone
     import argparse
 

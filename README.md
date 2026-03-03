@@ -26,6 +26,35 @@ The agent's identity is defined by Markdown files in `config/identity/`:
 These files are automatically loaded and used as the system prompt for the agent.
 You can override location/order with `IDENTITY_DIR` and `IDENTITY_FILES` in `.env`.
 
+## Runtime
+Two runtime providers are supported:
+
+- `google`: direct Google GenAI chat session.
+- `openai-local`: any OpenAI-compatible local endpoint (Ollama, LM Studio, vLLM, etc.).
+
+Google config:
+
+```bash
+GOOGLE_API_KEY=your_key
+GOOGLE_MODEL=gemini-2.5-flash
+```
+
+OpenAI-compatible local config:
+
+```bash
+DEFAULT_PROVIDER=openai-local
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=llama3.2
+# OPENAI_API_KEY=local
+```
+
+OpenLIT tracing config (optional):
+
+```bash
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:
@@ -80,3 +109,60 @@ Optional type-checking in the sandbox:
 ```bash
 uv run zukuagent --sandbox-file scripts/example.py --sandbox-type-check
 ```
+
+## Local OpenLIT Container
+
+This repository includes a local OpenLIT stack in `docker-compose.openlit.yml` (OpenLIT + ClickHouse).
+
+Start it with:
+
+```bash
+cp .env.example .env
+# Set a strong value for OPENLIT_DB_PASSWORD in .env
+docker compose -f docker-compose.openlit.yml up -d
+```
+
+Open OpenLIT at `http://localhost:3000` and point the SDK at the local OTLP endpoint in your `.env`:
+
+```bash
+OPENLIT_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OPENLIT_DB_PASSWORD=replace_with_a_strong_password
+# Optional: override pinned OpenLIT image tag
+# OPENLIT_IMAGE=ghcr.io/openlit/openlit:1.26.0
+```
+
+## Docker Compose (ZukuAgent + LightRAG)
+
+This repository includes a `docker-compose.yml` that starts:
+- `lightrag` (LightRAG API server) on `http://localhost:9621`
+- `zukuagent` (Telegram endpoint)
+
+1. Copy and fill environment variables:
+
+```bash
+cp .env.example .env
+cp .env.lightrag.example .env.lightrag
+```
+
+2. Start the stack:
+
+```bash
+docker compose up --build -d
+```
+
+3. Check status/logs:
+
+```bash
+docker compose ps
+docker compose logs -f lightrag
+docker compose logs -f zukuagent
+```
+
+Data is persisted in:
+- `./data/lightrag` for LightRAG indices/graph data
+- `./data/zukuagent` for local ZukuAgent runtime data
+
+Notes:
+- `LIGHTRAG_BASE_URL=http://lightrag:9621` is already injected into the `zukuagent` service in compose.
+- Current codebase does not yet query LightRAG from `ZukuAgent.chat()`; this compose setup wires the containers and networking so that service integration can be added cleanly.

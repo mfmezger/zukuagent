@@ -19,7 +19,7 @@ def main() -> None:
         default=settings.endpoint_mode,
         help="Endpoint mode to run.",
     )
-    parser.add_argument("--provider", default=None, help="LLM provider override.")
+    parser.add_argument("--provider", default=None, help="Runtime provider override (google|openai-local).")
     parser.add_argument("--model", default=None, help="Model name override.")
     parser.add_argument("--sandbox-code", default=None, help="Python code snippet to execute in Monty sandbox.")
     parser.add_argument("--sandbox-file", default=None, help="Path to a Python file to execute in Monty sandbox.")
@@ -50,5 +50,5 @@ def main() -> None:
     asyncio.run(agent.run())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
