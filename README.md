@@ -109,6 +109,43 @@ uv run zukuagent --endpoint telegram
 
 When pairing is required, each chat must execute `/pair <device_id>` and the `device_id` must be in `TELEGRAM_ALLOWED_PAIRING_DEVICES` (if configured).
 
+## Cron Tool
+
+The agent supports managed cron jobs via chat commands:
+
+- `/cron list`
+- `/cron remove <job_id>`
+- `/cron create agent '<schedule>' '<message>'`
+- `/cron create script '<schedule>' '<script_command>' [--sandbox=restricted|monty|none]`
+
+Examples:
+
+```text
+/cron create agent '0 9 * * 1-5' 'Send me a daily standup summary.'
+/cron create script '*/30 * * * *' '/opt/jobs/collect_metrics.sh' --sandbox=restricted
+```
+
+Cron job logs are written to `.zukuagent/cron/` by default.
+
+You can send a single one-shot message to the agent from CLI:
+
+```bash
+zukuagent --endpoint cli --message "Summarize yesterday's logs."
+```
+
+Relevant `.env` options:
+
+```bash
+CRON_ENABLED=true
+CRON_LOG_DIR=.zukuagent/cron
+CRON_AGENT_CLI=zukuagent
+CRON_SCRIPT_SANDBOX_MODE=restricted
+CRON_MONTY_TEMPLATE=monty sandbox run -- {command}
+CRON_ALLOWED_SESSION_IDS=123456789
+```
+
+`/cron` is always available in local CLI sessions. For remote sessions (for example Telegram), only session IDs listed in `CRON_ALLOWED_SESSION_IDS` can use `/cron`.
+
 ## Sandboxed Code Execution (Monty)
 
 Run Python code in a restricted Monty sandbox directly from the CLI:

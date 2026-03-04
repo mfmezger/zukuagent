@@ -68,6 +68,13 @@ class Settings:
     # Endpoint Settings
     endpoint_mode: str = "cli"
 
+    # Cron Tool Settings
+    cron_enabled: bool | str = True
+    cron_log_dir: str = ".zukuagent/cron"
+    cron_agent_cli: str = "zukuagent"
+    cron_script_sandbox_mode: str = "restricted"
+    cron_monty_template: str = "monty sandbox run -- {command}"
+    cron_allowed_session_ids: list[str] | str | None = field(default_factory=list)
     # Storage Settings
     agent_storage: str = "local"
     agentfs_id: str = "zukuagent"
@@ -91,6 +98,8 @@ class Settings:
         self.agent_storage = self.agent_storage.lower().strip()
         self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
+        self.cron_enabled = _parse_bool(self.cron_enabled, default=True)
+        self.cron_allowed_session_ids = _parse_csv_list(self.cron_allowed_session_ids)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -113,6 +122,12 @@ class Settings:
             identity_dir=os.getenv("IDENTITY_DIR", "config/identity"),
             identity_files=os.getenv("IDENTITY_FILES"),
             endpoint_mode=os.getenv("ENDPOINT_MODE", "cli"),
+            cron_enabled=os.getenv("CRON_ENABLED", "true"),
+            cron_log_dir=os.getenv("CRON_LOG_DIR", ".zukuagent/cron"),
+            cron_agent_cli=os.getenv("CRON_AGENT_CLI", "zukuagent"),
+            cron_script_sandbox_mode=os.getenv("CRON_SCRIPT_SANDBOX_MODE", "restricted"),
+            cron_monty_template=os.getenv("CRON_MONTY_TEMPLATE", "monty sandbox run -- {command}"),
+            cron_allowed_session_ids=os.getenv("CRON_ALLOWED_SESSION_IDS"),
             agent_storage=os.getenv("AGENT_STORAGE", "local"),
             agentfs_id=os.getenv("AGENTFS_ID", "zukuagent"),
             agentfs_db_path=os.getenv("AGENTFS_DB_PATH"),

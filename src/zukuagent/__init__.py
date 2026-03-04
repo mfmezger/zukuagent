@@ -22,6 +22,7 @@ def main() -> None:
     )
     parser.add_argument("--provider", default=None, help="Runtime provider override (google|openai-local).")
     parser.add_argument("--model", default=None, help="Model name override.")
+    parser.add_argument("--message", default=None, help="Send one message and exit (CLI endpoint only).")
     parser.add_argument("--sandbox-code", default=None, help="Python code snippet to execute in Monty sandbox.")
     parser.add_argument("--sandbox-file", default=None, help="Path to a Python file to execute in Monty sandbox.")
     parser.add_argument("--sandbox-type-check", action="store_true", help="Enable Monty type checking.")
@@ -49,6 +50,11 @@ def main() -> None:
     if args.endpoint == "telegram":
         endpoint = TelegramEndpoint(message_handler=agent.chat)
         asyncio.run(endpoint.run())
+        return
+
+    if args.message:
+        response = asyncio.run(agent.chat(args.message))
+        sys.stdout.write(f"{response}\n")
         return
 
     asyncio.run(agent.run())

@@ -7,6 +7,7 @@ import zukuagent
 class _FakeAgent:
     last_init: tuple[str | None, str | None] | None = None
     run_called = False
+    chat_messages: list[str] = []
 
     def __init__(self, provider=None, model_name=None):
         type(self).last_init = (provider, model_name)
@@ -15,6 +16,7 @@ class _FakeAgent:
         type(self).run_called = True
 
     async def chat(self, _message: str) -> str:
+        type(self).chat_messages.append(_message)
         return "ok"
 
 
@@ -40,6 +42,7 @@ def _run_coroutine(coro):
 def test_main_runs_cli_mode(monkeypatch):
     _FakeAgent.last_init = None
     _FakeAgent.run_called = False
+    _FakeAgent.chat_messages = []
 
     monkeypatch.setattr(zukuagent, "ZukuAgent", _FakeAgent)
     monkeypatch.setattr(zukuagent, "TelegramEndpoint", _FakeTelegramEndpoint)
@@ -55,6 +58,7 @@ def test_main_runs_cli_mode(monkeypatch):
 def test_main_runs_telegram_mode(monkeypatch):
     _FakeAgent.last_init = None
     _FakeAgent.run_called = False
+    _FakeAgent.chat_messages = []
     _FakeTelegramEndpoint.last_handler = None
     _FakeTelegramEndpoint.run_called = False
 
@@ -68,3 +72,20 @@ def test_main_runs_telegram_mode(monkeypatch):
     assert _FakeAgent.last_init == ("google", "g1")
     assert _FakeTelegramEndpoint.run_called is True
     assert _FakeTelegramEndpoint.last_handler is not None
+
+
+def test_main_runs_single_message_mode(monkeypatch, capsys):
+    _FakeAgent.last_init = None
+    _FakeAgent.run_called = False
+    _FakeAgent.chat_messages = []
+
+    monkeypatch.setattr(zukuagent, "ZukuAgent", _FakeAgent)
+    monkeypatch.setattr(zukuagent, "TelegramEndpoint", _FakeTelegramEndpoint)
+    monkeypatch.setattr(zukuagent.asyncio, "run", _run_coroutine)
+    monkeypatch.setattr(sys, "argv", ["zukuagent", "--endpoint", "cli", "--message", "ping"])
+
+    zukuagent.main()
+
+    assert _FakeAgent.run_called is False
+    assert _FakeAgent.chat_messages == ["ping"]
+    assert capsys.readouterr().out.strip() == "ok"

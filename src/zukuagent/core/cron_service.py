@@ -1,0 +1,203 @@
+"""Cron job management for ZukuAgent tool commands."""
+
+from __future__ import annotations
+
+import re
+import shlex
+import shutil
+import subprocess
+import uuid
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from zukuagent.core.settings import settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@dataclass(frozen=True)
+class CronJob:
+    """Tracked cron job metadata parsed from crontab entries."""
+
+    job_id: str
+    schedule: str
+    mode: str
+    command: str
+    raw_line: str
+
+
+class CronJobService:
+    """Create, list, and remove ZukuAgent-managed cron jobs."""
+
+    _TAG_PATTERN = re.compile(r"\s+#\s+zukuagent-cron:(?P<job_id>[a-z0-9]+):(?P<mode>[a-z-]+)$")
+    _SCHEDULE_PATTERN = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
+
+    def __init__(self, *, project_root: Path) -> None:
+        """Initialize cron service with project-root scoped paths."""
+        crontab_bin = shutil.which("crontab")
+        if not crontab_bin:
+            msg = "`crontab` executable was not found on PATH."
+            raise RuntimeError(msg)
+
+        self.crontab_bin = crontab_bin
+        self.project_root = project_root
+        self.log_dir = self.project_root / settings.cron_log_dir
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+    def create_agent_job(self, *, schedule: str, message: str, provider: str, model_name: str) -> CronJob:
+        """Create a cron line that invokes ZukuAgent with a message."""
+        self._validate_schedule(schedule)
+        self._validate_single_line("message", message)
+        self._validate_single_line("provider", provider)
+        self._validate_single_line("model_name", model_name)
+        agent_cli_command = self._build_cli_command(settings.cron_agent_cli)
+        job_id = uuid.uuid4().hex[:12]
+        log_file = self.log_dir / f"{job_id}.log"
+        quoted_message = shlex.quote(message)
+        provider_part = f"--provider {shlex.quote(provider)}" if provider else ""
+        model_part = f"--model {shlex.quote(model_name)}" if model_name else ""
+        command = (
+            f"cd {shlex.quote(str(self.project_root))} && "
+            f"{agent_cli_command} --endpoint cli {provider_part} {model_part} --message {quoted_message} "
+            f">> {shlex.quote(str(log_file))} 2>&1"
+        )
+        line = self._build_line(schedule=schedule, command=command, job_id=job_id, mode="agent")
+        self._append_line(line)
+        return CronJob(job_id=job_id, schedule=schedule, mode="agent", command=command, raw_line=line)
+
+    def create_script_job(self, *, schedule: str, script_command: str, sandbox: str | None) -> CronJob:
+        """Create a cron line that executes a script command."""
+        self._validate_schedule(schedule)
+        self._validate_single_line("script_command", script_command)
+        job_id = uuid.uuid4().hex[:12]
+        log_file = self.log_dir / f"{job_id}.log"
+        selected_sandbox = (sandbox or settings.cron_script_sandbox_mode).lower()
+        inner_command = self._build_script_command(script_command=script_command, sandbox=selected_sandbox)
+        command = f"{inner_command} >> {shlex.quote(str(log_file))} 2>&1"
+        line = self._build_line(schedule=schedule, command=command, job_id=job_id, mode=f"script-{selected_sandbox}")
+        self._append_line(line)
+        return CronJob(job_id=job_id, schedule=schedule, mode=f"script-{selected_sandbox}", command=command, raw_line=line)
+
+    def list_jobs(self) -> list[CronJob]:
+        """List all ZukuAgent-managed cron jobs."""
+        jobs: list[CronJob] = []
+        for line in self._read_crontab_lines():
+            match = self._TAG_PATTERN.search(line)
+            if not match:
+                continue
+            content = line[: match.start()].rstrip()
+            parts = content.split(None, 5)
+            if len(parts) < 6:
+                continue
+            schedule = " ".join(parts[:5])
+            command = parts[5]
+            jobs.append(
+                CronJob(
+                    job_id=match.group("job_id"),
+                    schedule=schedule,
+                    mode=match.group("mode"),
+                    command=command,
+                    raw_line=line,
+                )
+            )
+        return jobs
+
+    def remove_job(self, job_id: str) -> bool:
+        """Remove a managed cron job by ID."""
+        lines = self._read_crontab_lines()
+        needle = f"zukuagent-cron:{job_id}:"
+        new_lines = [line for line in lines if needle not in line]
+        if len(new_lines) == len(lines):
+            return False
+        self._write_crontab_lines(new_lines)
+        return True
+
+    def _build_script_command(self, *, script_command: str, sandbox: str) -> str:
+        quoted_script = shlex.quote(script_command)
+        if sandbox == "none":
+            return f"/bin/bash -lc {quoted_script}"
+        if sandbox == "monty":
+            inner = f"/bin/bash -lc {quoted_script}"
+            escaped = shlex.quote(inner)
+            return self._render_command_template(settings.cron_monty_template, escaped)
+        if sandbox == "restricted":
+            return f'env -i HOME="${{HOME:-/tmp}}" PATH=/usr/bin:/bin /bin/bash -lc {quoted_script}'
+        msg = f"Unsupported sandbox mode: {sandbox}. Use one of: restricted, monty, none."
+        raise ValueError(msg)
+
+    def _build_line(self, *, schedule: str, command: str, job_id: str, mode: str) -> str:
+        self._validate_single_line("command", command)
+        return f"{schedule} {command} # zukuagent-cron:{job_id}:{mode}"
+
+    def _validate_schedule(self, schedule: str) -> None:
+        self._validate_single_line("schedule", schedule)
+        if not self._SCHEDULE_PATTERN.match(schedule.strip()):
+            msg = "Schedule must contain exactly five cron fields separated by spaces."
+            raise ValueError(msg)
+
+    def _validate_single_line(self, name: str, value: str) -> None:
+        if "\n" in value or "\r" in value:
+            msg = f"{name} must be a single line."
+            raise ValueError(msg)
+
+    def _build_cli_command(self, cli_value: str) -> str:
+        self._validate_single_line("CRON_AGENT_CLI", cli_value)
+        try:
+            parts = shlex.split(cli_value)
+        except ValueError as error:
+            msg = f"Invalid CRON_AGENT_CLI value: {error}"
+            raise ValueError(msg) from error
+        if not parts:
+            msg = "CRON_AGENT_CLI must not be empty."
+            raise ValueError(msg)
+        return shlex.join(parts)
+
+    def _render_command_template(self, template: str, command: str) -> str:
+        self._validate_single_line("CRON_MONTY_TEMPLATE", template)
+        marker = "__ZUKU_CRON_COMMAND__"
+        if "{command}" not in template:
+            msg = "CRON_MONTY_TEMPLATE must include {command}."
+            raise ValueError(msg)
+        if template.count("{command}") != 1:
+            msg = "CRON_MONTY_TEMPLATE must include {command} exactly once."
+            raise ValueError(msg)
+        rendered = template.replace("{command}", marker)
+        try:
+            parts = shlex.split(rendered)
+        except ValueError as error:
+            msg = f"Invalid CRON_MONTY_TEMPLATE value: {error}"
+            raise ValueError(msg) from error
+        if marker not in parts:
+            msg = "CRON_MONTY_TEMPLATE must place {command} as a shell argument."
+            raise ValueError(msg)
+        safe_parts = [command if part == marker else shlex.quote(part) for part in parts]
+        return " ".join(safe_parts)
+
+    def _append_line(self, line: str) -> None:
+        lines = self._read_crontab_lines()
+        lines.append(line)
+        self._write_crontab_lines(lines)
+
+    def _read_crontab_lines(self) -> list[str]:
+        result = self._run_crontab("-l", check=False)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            if "no crontab" in stderr:
+                return []
+            result.check_returncode()
+        content = result.stdout or ""
+        return [line for line in content.splitlines() if line.strip()]
+
+    def _write_crontab_lines(self, lines: list[str]) -> None:
+        payload = "\n".join(lines) + ("\n" if lines else "")
+        self._run_crontab("-", check=True, input_text=payload)
+
+    def _run_crontab(self, *args: str, check: bool, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [self.crontab_bin, *args],
+            check=check,
+            input=input_text,
+            text=True,
+            capture_output=True,
+        )
