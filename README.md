@@ -55,6 +55,25 @@ OPENLIT_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+Storage backend config:
+
+```bash
+# Default
+AGENT_STORAGE=local
+
+# Optional: Turso AgentFS
+AGENT_STORAGE=agentfs
+AGENTFS_ID=zukuagent
+# Optional sqlite path used by AgentFS locally
+# AGENTFS_DB_PATH=.agentfs/agent.db
+```
+
+If using `AGENT_STORAGE=agentfs`, install the SDK:
+
+```bash
+uv add agentfs-sdk
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:
