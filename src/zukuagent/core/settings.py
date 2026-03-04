@@ -43,11 +43,13 @@ class Settings:
     # API Keys
     google_api_key: str | None = None
     openai_api_key: str | None = None
+    openrouter_api_key: str | None = None
 
     # Runtime Settings
     default_provider: str = "google"
     google_model: str = "gemini-2.5-flash"
     openai_model: str = "gpt-4o-mini"
+    openrouter_model: str = "anthropic/claude-3-haiku"
     openai_base_url: str = "http://localhost:11434/v1"
     openlit_enabled: bool | str = False
     openlit_otlp_endpoint: str = "http://localhost:4318"
@@ -97,9 +99,11 @@ class Settings:
         return cls(
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
             default_provider=os.getenv("DEFAULT_PROVIDER", "google"),
             google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            openrouter_model=os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
             openlit_enabled=os.getenv("OPENLIT_ENABLED", "false"),
             openlit_otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),

@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import json
 import os
 from pathlib import Path
 from typing import ClassVar
@@ -16,6 +17,7 @@ from rich.markdown import Markdown
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
+from zukuagent.services.sandbox_service import MontySandboxService
 from zukuagent.services.tracing import OpenlitTracingService
 
 
@@ -25,12 +27,14 @@ class ZukuAgent:
     PROJECT_MARKERS: ClassVar[tuple[str, ...]] = ("pyproject.toml", ".git")
     SKILLS_DIR: ClassVar[str] = "skills"
     SKILL_FILE_NAME: ClassVar[str] = "SKILL.md"
+    SANDBOX_TOOL_NAME: ClassVar[str] = "execute_python_sandbox"
+    MAX_TOOL_ROUNDS: ClassVar[int] = 3
 
     def __init__(self, provider: str | None = None, model_name: str | None = None) -> None:
         """Initialize the agent.
 
         Args:
-            provider: Optional runtime override. Supports "google" and "openai-local".
+            provider: Optional runtime override. Supports "google", "openai-local", and "openrouter".
             model_name: Optional model override.
 
         """
@@ -44,6 +48,7 @@ class ZukuAgent:
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
 
         self.transcriber = ParakeetTranscriptionService()
+        self.sandbox = MontySandboxService()
         self.tracing = OpenlitTracingService()
         self.heartbeat = AgentHeartbeat(
             interval_minutes=settings.heartbeat_interval_minutes,
@@ -53,8 +58,11 @@ class ZukuAgent:
         self.client: object | None = None
         self.google_aio_client = None
         self.chat_session = None
+        self.history: list[dict[str, object]] = []
+        self._openrouter_session_histories: dict[str, list[dict[str, object]]] = {}
         self._openai_client: AsyncOpenAI | None = None
         self._openai_messages: list[dict[str, str]] = []
+        self._openai_session_messages: dict[str, list[dict[str, str]]] = {}
 
         self._setup_provider()
         logger.info("ZukuAgent initialized with runtime provider: {}", self.provider)
@@ -159,6 +167,14 @@ class ZukuAgent:
             self.chat_session = None
         elif self.provider == "openai-local" and self._openai_messages and self._openai_messages[0]["role"] == "system":
             self._openai_messages[0]["content"] = self.system_prompt
+            for session_messages in self._openai_session_messages.values():
+                if session_messages and session_messages[0]["role"] == "system":
+                    session_messages[0]["content"] = self.system_prompt
+        elif self.provider == "openrouter" and self.history and self.history[0].get("role") == "system":
+            self.history[0]["content"] = self.system_prompt
+            for session_history in self._openrouter_session_histories.values():
+                if session_history and session_history[0].get("role") == "system":
+                    session_history[0]["content"] = self.system_prompt
 
     def _find_project_root(self) -> Path:
         """Locate the project root by searching parent directories for known markers."""
@@ -171,8 +187,8 @@ class ZukuAgent:
 
     def _setup_provider(self) -> None:
         """Configure the chosen runtime provider."""
-        if self.provider not in {"google", "openai-local"}:
-            msg = f"Unsupported provider: {self.provider}. Supported providers are: google, openai-local"
+        if self.provider not in {"google", "openai-local", "openrouter"}:
+            msg = f"Unsupported provider: {self.provider}. " "Supported providers are: google, openai-local, openrouter"
             raise ValueError(msg)
 
         if self.provider == "google":
@@ -187,12 +203,39 @@ class ZukuAgent:
             self.google_aio_client = self.client.aio
             return
 
-        self.model_name = self.model_name or settings.openai_model
-        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY") or "local"
-        self._openai_client = AsyncOpenAI(base_url=settings.openai_base_url, api_key=api_key)
-        self._openai_messages = [{"role": "system", "content": self.system_prompt}]
+        if self.provider == "openai-local":
+            self.model_name = self.model_name or settings.openai_model
+            api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY") or "local"
+            self._openai_client = AsyncOpenAI(base_url=settings.openai_base_url, api_key=api_key)
+            self._openai_messages = [{"role": "system", "content": self.system_prompt}]
+            return
 
-    async def chat(self, message: str) -> str:
+        openrouter_key = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+        if hasattr(openrouter_key, "get_secret_value"):
+            openrouter_key = openrouter_key.get_secret_value()
+        if not openrouter_key:
+            logger.error("OPENROUTER_API_KEY not found in settings or environment.")
+            msg = "Missing OPENROUTER_API_KEY"
+            raise ValueError(msg)
+
+        openrouter_model = settings.openrouter_model
+        self.model_name = self.model_name or openrouter_model
+        self.client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=openrouter_key)
+        self.history = [{"role": "system", "content": self.system_prompt}]
+
+    def _get_openrouter_history(self, session_id: str | None) -> list[dict[str, object]]:
+        """Return the OpenRouter history for the given session."""
+        if session_id is None:
+            return self.history
+        return self._openrouter_session_histories.setdefault(session_id, [{"role": "system", "content": self.system_prompt}])
+
+    def _get_openai_messages(self, session_id: str | None) -> list[dict[str, str]]:
+        """Return the OpenAI-compatible message history for the given session."""
+        if session_id is None:
+            return self._openai_messages
+        return self._openai_session_messages.setdefault(session_id, [{"role": "system", "content": self.system_prompt}])
+
+    async def chat(self, message: str, session_id: str | None = None) -> str:
         """Send a message to the configured runtime and return the response."""
         if self.provider == "google":
             logger.info("Sending message to Google runtime...")
@@ -208,19 +251,116 @@ class ZukuAgent:
             response_text = response.text or ""
             if not response_text:
                 response_text = "I could not produce a response from the Google runtime."
+        elif self.provider == "openrouter":
+            history = self._get_openrouter_history(session_id)
+            history.append({"role": "user", "content": message})
+            response_text = await self._chat_openrouter_with_tools(history)
         else:
-            self._openai_messages.append({"role": "user", "content": message})
+            messages = self._get_openai_messages(session_id)
+            messages.append({"role": "user", "content": message})
             response = await self._openai_client.chat.completions.create(
                 model=self.model_name,
-                messages=self._openai_messages,
+                messages=messages,
             )
             response_text = response.choices[0].message.content or ""
             if not response_text:
                 response_text = "I could not produce a response from the OpenAI-compatible runtime."
-            self._openai_messages.append({"role": "assistant", "content": response_text})
+            messages.append({"role": "assistant", "content": response_text})
 
         self._compress_skills_after_use()
         return response_text
+
+    async def _chat_openrouter_with_tools(self, history: list[dict[str, object]]) -> str:
+        """Run one OpenRouter turn, resolving tool calls when requested."""
+        for _ in range(self.MAX_TOOL_ROUNDS):
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=history,
+                tools=self._openrouter_tools(),
+                tool_choice="auto",
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+
+            if not tool_calls:
+                response_text = message.content or ""
+                history.append({"role": "assistant", "content": response_text})
+                return response_text
+
+            assistant_message = {
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [tool_call.model_dump() for tool_call in tool_calls],
+            }
+            history.append(assistant_message)
+
+            for tool_call in tool_calls:
+                tool_payload = self._run_tool_call(tool_call.function.name, tool_call.function.arguments)
+                history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(tool_payload),
+                    }
+                )
+
+        msg = "Tool call loop exceeded the maximum number of rounds."
+        raise RuntimeError(msg)
+
+    def _openrouter_tools(self) -> list[dict]:
+        """Return function tool definitions for OpenRouter."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": self.SANDBOX_TOOL_NAME,
+                    "description": "Execute provided Python code in a Monty sandbox.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Python code to execute inside the sandbox.",
+                            },
+                            "inputs": {
+                                "type": "object",
+                                "description": "Optional inputs available to the sandboxed program.",
+                            },
+                        },
+                        "required": ["code"],
+                    },
+                },
+            }
+        ]
+
+    def _run_tool_call(self, tool_name: str, arguments_json: str) -> dict[str, object]:
+        """Execute a single tool call and return structured output."""
+        if tool_name != self.SANDBOX_TOOL_NAME:
+            return {"ok": False, "error": f"Unsupported tool: {tool_name}"}
+
+        try:
+            raw_args = json.loads(arguments_json) if arguments_json else {}
+        except json.JSONDecodeError as exc:
+            return {"ok": False, "error": f"Invalid tool arguments JSON: {exc}"}
+
+        code = raw_args.get("code")
+        if not isinstance(code, str) or not code.strip():
+            return {"ok": False, "error": "Missing required string argument: code"}
+
+        inputs = raw_args.get("inputs")
+        if inputs is not None and not isinstance(inputs, dict):
+            return {"ok": False, "error": "inputs must be an object if provided"}
+
+        try:
+            result = self.sandbox.run_code(code=code, inputs=inputs)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+        return {
+            "ok": True,
+            "output": result.output,
+            "duration_ms": round(result.duration_ms, 3),
+        }
 
     async def process_audio(self, audio_path: str) -> None:
         """Transcribe audio and send it to the agent."""

@@ -109,6 +109,26 @@ uv run zukuagent --endpoint telegram
 
 When pairing is required, each chat must execute `/pair <device_id>` and the `device_id` must be in `TELEGRAM_ALLOWED_PAIRING_DEVICES` (if configured).
 
+## Sandboxed Code Execution (Monty)
+
+Run Python code in a restricted Monty sandbox directly from the CLI:
+
+```bash
+uv run zukuagent --sandbox-code "from pydantic import BaseModel; class User(BaseModel): name: str; User(name='zuku')"
+```
+
+Or execute a file:
+
+```bash
+uv run zukuagent --sandbox-file scripts/example.py
+```
+
+Optional type-checking in the sandbox:
+
+```bash
+uv run zukuagent --sandbox-file scripts/example.py --sandbox-type-check
+```
+
 ## Local OpenLIT Container
 
 This repository includes a local OpenLIT stack in `docker-compose.openlit.yml` (OpenLIT + ClickHouse).
