@@ -245,6 +245,29 @@ async def test_chat_handles_cron_tool_commands(monkeypatch, stub_runtime_service
     assert "Cron job `agent-1` removed." in removed
 
 
+@pytest.mark.asyncio
+async def test_chat_handles_cron_script_command_with_arguments(monkeypatch, stub_runtime_services, stub_google_client):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "cron_enabled", True)
+    agent = ZukuAgent(provider="google")
+
+    created = await agent.chat("/cron create script '*/10 * * * *' /opt/jobs/collect.sh --fast --sandbox=none")
+
+    assert "Cron job created: `script-1` (script-none)." in created
+    assert agent.cron_service.jobs[0]["command"] == "/opt/jobs/collect.sh --fast"
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_invalid_cron_script_options(monkeypatch, stub_runtime_services, stub_google_client):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "cron_enabled", True)
+    agent = ZukuAgent(provider="google")
+
+    response = await agent.chat("/cron create script '*/10 * * * *' /opt/jobs/collect.sh --sandbox=none --sandbox=monty")
+
+    assert "Invalid command: Only one --sandbox option is allowed and it must be last." in response
+
+
 def test_compress_updates_openai_system_message(tmp_path, monkeypatch, stub_runtime_services, stub_openai_client):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ZukuAgent, "_find_project_root", lambda self: tmp_path)

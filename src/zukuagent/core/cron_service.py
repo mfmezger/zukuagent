@@ -31,6 +31,7 @@ class CronJobService:
     """Create, list, and remove ZukuAgent-managed cron jobs."""
 
     _TAG_PATTERN = re.compile(r"\s+#\s+zukuagent-cron:(?P<job_id>[a-z0-9]+):(?P<mode>[a-z-]+)$")
+    _SCHEDULE_PATTERN = re.compile(r"^\S+\s+\S+\s+\S+\s+\S+\s+\S+$")
 
     def __init__(self, *, project_root: Path) -> None:
         """Initialize cron service with project-root scoped paths."""
@@ -46,6 +47,10 @@ class CronJobService:
 
     def create_agent_job(self, *, schedule: str, message: str, provider: str, model_name: str) -> CronJob:
         """Create a cron line that invokes ZukuAgent with a message."""
+        self._validate_schedule(schedule)
+        self._validate_single_line("message", message)
+        self._validate_single_line("provider", provider)
+        self._validate_single_line("model_name", model_name)
         job_id = uuid.uuid4().hex[:12]
         log_file = self.log_dir / f"{job_id}.log"
         quoted_message = shlex.quote(message)
@@ -63,6 +68,8 @@ class CronJobService:
 
     def create_script_job(self, *, schedule: str, script_command: str, sandbox: str | None) -> CronJob:
         """Create a cron line that executes a script command."""
+        self._validate_schedule(schedule)
+        self._validate_single_line("script_command", script_command)
         job_id = uuid.uuid4().hex[:12]
         log_file = self.log_dir / f"{job_id}.log"
         selected_sandbox = (sandbox or settings.cron_script_sandbox_mode).lower()
@@ -121,7 +128,19 @@ class CronJobService:
         raise ValueError(msg)
 
     def _build_line(self, *, schedule: str, command: str, job_id: str, mode: str) -> str:
+        self._validate_single_line("command", command)
         return f"{schedule} {command} # zukuagent-cron:{job_id}:{mode}"
+
+    def _validate_schedule(self, schedule: str) -> None:
+        self._validate_single_line("schedule", schedule)
+        if not self._SCHEDULE_PATTERN.match(schedule.strip()):
+            msg = "Schedule must contain exactly five cron fields separated by spaces."
+            raise ValueError(msg)
+
+    def _validate_single_line(self, name: str, value: str) -> None:
+        if "\n" in value or "\r" in value:
+            msg = f"{name} must be a single line."
+            raise ValueError(msg)
 
     def _append_line(self, line: str) -> None:
         lines = self._read_crontab_lines()

@@ -78,3 +78,31 @@ def test_list_and_remove_jobs(tmp_path: Path, fake_crontab) -> None:
     assert {job.job_id for job in jobs} == {first.job_id, second.job_id}
     assert service.remove_job(first.job_id) is True
     assert service.remove_job("missing") is False
+
+
+def test_create_job_rejects_newline_input(tmp_path: Path, monkeypatch, fake_crontab) -> None:
+    monkeypatch.setattr(settings, "cron_log_dir", ".zukuagent/cron")
+    monkeypatch.setattr(settings, "cron_agent_cli", "zukuagent")
+    service = CronJobService(project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="single line"):
+        service.create_agent_job(
+            schedule="* * * * *",
+            message="ping\n* * * * * /bin/touch /tmp/pwned",
+            provider="google",
+            model_name="gemini-2.5-flash",
+        )
+
+    with pytest.raises(ValueError, match="single line"):
+        service.create_script_job(
+            schedule="* * * * *",
+            script_command="/opt/jobs/run.sh\n* * * * * /bin/touch /tmp/pwned",
+            sandbox="none",
+        )
+
+
+def test_create_job_rejects_invalid_schedule(tmp_path: Path, fake_crontab) -> None:
+    service = CronJobService(project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="five cron fields"):
+        service.create_script_job(schedule="@daily", script_command="/opt/jobs/run.sh", sandbox="restricted")

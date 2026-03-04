@@ -45,6 +45,7 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [lint.per-file-ignores]
+# `cron_service` executes a fixed `crontab` binary path with arg lists and no shell.
 "src/zukuagent/core/cron_service.py" = ["S603"]
 
 [format]

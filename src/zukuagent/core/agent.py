@@ -250,16 +250,13 @@ class ZukuAgent:
         action = args[1]
         if action in {"help", "--help", "-h"}:
             return self._cron_help_text()
-
-        handlers = {
-            "list": lambda: self._handle_cron_list(),
-            "remove": lambda: self._handle_cron_remove(args),
-            "create": lambda: self._handle_cron_create(args),
-        }
-        handler = handlers.get(action)
-        if handler is None:
-            return self._cron_help_text()
-        return handler()
+        if action == "list":
+            return self._handle_cron_list()
+        if action == "remove":
+            return self._handle_cron_remove(args)
+        if action == "create":
+            return self._handle_cron_create(args)
+        return self._cron_help_text()
 
     def _handle_cron_list(self) -> str:
         jobs = self.cron_service.list_jobs()
@@ -303,20 +300,36 @@ class ZukuAgent:
         return f"Cron job created: `{job.job_id}` (agent). Schedule: `{job.schedule}`."
 
     def _handle_cron_create_script(self, *, schedule: str, args: list[str]) -> str:
-        script_command = args[4]
-        sandbox = self._parse_cron_script_sandbox(args[5:])
-        if sandbox == "__invalid__":
+        extras = args[4:]
+        if not extras:
             return "Usage: /cron create script '<schedule>' '<script_command>' [--sandbox=restricted|monty|none]"
+
+        sandbox_index = next((i for i, arg in enumerate(extras) if arg.startswith("--sandbox=")), len(extras))
+        script_parts = extras[:sandbox_index]
+        option_parts = extras[sandbox_index:]
+        if not script_parts:
+            return "Usage: /cron create script '<schedule>' '<script_command>' [--sandbox=restricted|monty|none]"
+
+        try:
+            sandbox = self._parse_cron_script_sandbox(option_parts)
+        except ValueError as error:
+            return f"Invalid command: {error}\n{self._cron_help_text()}"
+
+        script_command = " ".join(script_parts)
         job = self.cron_service.create_script_job(schedule=schedule, script_command=script_command, sandbox=sandbox)
         return f"Cron job created: `{job.job_id}` ({job.mode}). Schedule: `{job.schedule}`."
 
     def _parse_cron_script_sandbox(self, extras: list[str]) -> str | None:
-        sandbox: str | None = None
-        for extra in extras:
-            if not extra.startswith("--sandbox="):
-                return "__invalid__"
-            sandbox = extra.split("=", 1)[1]
-        return sandbox
+        if not extras:
+            return None
+        if len(extras) != 1:
+            msg = "Only one --sandbox option is allowed and it must be last."
+            raise ValueError(msg)
+        extra = extras[0]
+        if not extra.startswith("--sandbox="):
+            msg = f"Unsupported option: {extra}"
+            raise ValueError(msg)
+        return extra.split("=", 1)[1]
 
     def _cron_help_text(self) -> str:
         return (
