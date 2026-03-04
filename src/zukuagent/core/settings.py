@@ -66,6 +66,13 @@ class Settings:
     # Endpoint Settings
     endpoint_mode: str = "cli"
 
+    # Cron Tool Settings
+    cron_enabled: bool | str = True
+    cron_log_dir: str = ".zukuagent/cron"
+    cron_agent_cli: str = "zukuagent"
+    cron_script_sandbox_mode: str = "restricted"
+    cron_monty_template: str = "monty sandbox run -- {command}"
+
     # Telegram Settings
     telegram_bot_token: str | None = None
     telegram_allowed_chat_ids: list[int] | str | None = field(default_factory=list)
@@ -83,6 +90,7 @@ class Settings:
         self.identity_files = parsed_identity
         self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
+        self.cron_enabled = _parse_bool(self.cron_enabled, default=True)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -103,6 +111,11 @@ class Settings:
             identity_dir=os.getenv("IDENTITY_DIR", "config/identity"),
             identity_files=os.getenv("IDENTITY_FILES"),
             endpoint_mode=os.getenv("ENDPOINT_MODE", "cli"),
+            cron_enabled=os.getenv("CRON_ENABLED", "true"),
+            cron_log_dir=os.getenv("CRON_LOG_DIR", ".zukuagent/cron"),
+            cron_agent_cli=os.getenv("CRON_AGENT_CLI", "zukuagent"),
+            cron_script_sandbox_mode=os.getenv("CRON_SCRIPT_SANDBOX_MODE", "restricted"),
+            cron_monty_template=os.getenv("CRON_MONTY_TEMPLATE", "monty sandbox run -- {command}"),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_allowed_chat_ids=os.getenv("TELEGRAM_ALLOWED_CHAT_IDS"),
             telegram_allowed_pairing_devices=os.getenv("TELEGRAM_ALLOWED_PAIRING_DEVICES"),

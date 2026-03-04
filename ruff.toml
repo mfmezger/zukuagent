@@ -44,6 +44,9 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[lint.per-file-ignores]
+"src/zukuagent/core/cron_service.py" = ["S603"]
+
 [format]
 quote-style = "double"
 indent-style = "space"

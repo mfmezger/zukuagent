@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import os
+import shlex
 from pathlib import Path
 from typing import ClassVar
 
@@ -13,6 +14,7 @@ from openai import AsyncOpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 
+from zukuagent.core.cron_service import CronJobService
 from zukuagent.core.heartbeat import AgentHeartbeat
 from zukuagent.core.settings import settings
 from zukuagent.services.audio_service import ParakeetTranscriptionService
@@ -42,6 +44,7 @@ class ZukuAgent:
         self.base_prompt = self._load_base_identity()
         self.skill_contexts = self._load_skills()
         self.system_prompt = self._compose_system_prompt(use_compressed_skills=False)
+        self.cron_service = CronJobService(project_root=self.project_root)
 
         self.transcriber = ParakeetTranscriptionService()
         self.tracing = OpenlitTracingService()
@@ -194,6 +197,10 @@ class ZukuAgent:
 
     async def chat(self, message: str) -> str:
         """Send a message to the configured runtime and return the response."""
+        command_response = self._handle_tool_command(message)
+        if command_response is not None:
+            return command_response
+
         if self.provider == "google":
             logger.info("Sending message to Google runtime...")
             if self.chat_session is None:
@@ -221,6 +228,107 @@ class ZukuAgent:
 
         self._compress_skills_after_use()
         return response_text
+
+    def _handle_tool_command(self, message: str) -> str | None:
+        if not message.startswith("/cron"):
+            return None
+        if not settings.cron_enabled:
+            return "Cron tool is disabled by configuration (`CRON_ENABLED=false`)."
+
+        try:
+            args = shlex.split(message)
+        except ValueError as error:
+            return f"Invalid cron command syntax: {error}"
+
+        if not args or args[0] != "/cron":
+            return None
+        if len(args) == 1:
+            return self._cron_help_text()
+        return self._dispatch_cron_action(args)
+
+    def _dispatch_cron_action(self, args: list[str]) -> str:
+        action = args[1]
+        if action in {"help", "--help", "-h"}:
+            return self._cron_help_text()
+
+        handlers = {
+            "list": lambda: self._handle_cron_list(),
+            "remove": lambda: self._handle_cron_remove(args),
+            "create": lambda: self._handle_cron_create(args),
+        }
+        handler = handlers.get(action)
+        if handler is None:
+            return self._cron_help_text()
+        return handler()
+
+    def _handle_cron_list(self) -> str:
+        jobs = self.cron_service.list_jobs()
+        if not jobs:
+            return "No Zuku-managed cron jobs found."
+        lines = ["Managed cron jobs:"]
+        lines.extend(f"- {job.job_id}: `{job.schedule}` ({job.mode})" for job in jobs)
+        return "\n".join(lines)
+
+    def _handle_cron_remove(self, args: list[str]) -> str:
+        if len(args) != 3:
+            return "Usage: /cron remove <job_id>"
+        job_id = args[2]
+        removed = self.cron_service.remove_job(job_id)
+        if removed:
+            return f"Cron job `{job_id}` removed."
+        return f"Cron job `{job_id}` not found."
+
+    def _handle_cron_create(self, args: list[str]) -> str:
+        if len(args) < 5:
+            return self._cron_help_text()
+
+        mode = args[2]
+        schedule = args[3]
+        if mode == "agent":
+            return self._handle_cron_create_agent(schedule=schedule, args=args)
+        if mode == "script":
+            return self._handle_cron_create_script(schedule=schedule, args=args)
+        return self._cron_help_text()
+
+    def _handle_cron_create_agent(self, *, schedule: str, args: list[str]) -> str:
+        agent_message = " ".join(args[4:])
+        if not agent_message.strip():
+            return "Usage: /cron create agent '<schedule>' '<message>'"
+        job = self.cron_service.create_agent_job(
+            schedule=schedule,
+            message=agent_message,
+            provider=self.provider,
+            model_name=self.model_name or "",
+        )
+        return f"Cron job created: `{job.job_id}` (agent). Schedule: `{job.schedule}`."
+
+    def _handle_cron_create_script(self, *, schedule: str, args: list[str]) -> str:
+        script_command = args[4]
+        sandbox = self._parse_cron_script_sandbox(args[5:])
+        if sandbox == "__invalid__":
+            return "Usage: /cron create script '<schedule>' '<script_command>' [--sandbox=restricted|monty|none]"
+        job = self.cron_service.create_script_job(schedule=schedule, script_command=script_command, sandbox=sandbox)
+        return f"Cron job created: `{job.job_id}` ({job.mode}). Schedule: `{job.schedule}`."
+
+    def _parse_cron_script_sandbox(self, extras: list[str]) -> str | None:
+        sandbox: str | None = None
+        for extra in extras:
+            if not extra.startswith("--sandbox="):
+                return "__invalid__"
+            sandbox = extra.split("=", 1)[1]
+        return sandbox
+
+    def _cron_help_text(self) -> str:
+        return (
+            "Cron tool usage:\n"
+            "- `/cron list`\n"
+            "- `/cron remove <job_id>`\n"
+            "- `/cron create agent '<schedule>' '<message>'`\n"
+            "- `/cron create script '<schedule>' '<script_command>' [--sandbox=restricted|monty|none]`\n"
+            "Examples:\n"
+            "- `/cron create agent '0 9 * * 1-5' 'Send me a daily standup summary.'`\n"
+            "- `/cron create script '*/30 * * * *' '/opt/jobs/collect_metrics.sh' --sandbox=restricted`"
+        )
 
     async def process_audio(self, audio_path: str) -> None:
         """Transcribe audio and send it to the agent."""

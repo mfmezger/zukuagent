@@ -82,11 +82,39 @@ class _FakeTracingService:
         self.flushed += 1
 
 
+class _FakeCronService:
+    def __init__(self, *, project_root) -> None:
+        del project_root
+        self.jobs: list[dict[str, str]] = []
+        self.removed: list[str] = []
+
+    def create_agent_job(self, *, schedule: str, message: str, provider: str, model_name: str):
+        job_id = f"agent-{len(self.jobs) + 1}"
+        job = {"job_id": job_id, "schedule": schedule, "mode": "agent", "message": message, "provider": provider, "model_name": model_name}
+        self.jobs.append(job)
+        return type("CronJob", (), job)()
+
+    def create_script_job(self, *, schedule: str, script_command: str, sandbox: str | None):
+        mode = f"script-{sandbox or 'restricted'}"
+        job_id = f"script-{len(self.jobs) + 1}"
+        job = {"job_id": job_id, "schedule": schedule, "mode": mode, "command": script_command}
+        self.jobs.append(job)
+        return type("CronJob", (), job)()
+
+    def list_jobs(self):
+        return [type("CronJob", (), job)() for job in self.jobs]
+
+    def remove_job(self, job_id: str) -> bool:
+        self.removed.append(job_id)
+        return any(job["job_id"] == job_id for job in self.jobs)
+
+
 @pytest.fixture
 def stub_runtime_services(monkeypatch):
     monkeypatch.setattr("zukuagent.core.agent.ParakeetTranscriptionService", lambda: object())
     monkeypatch.setattr("zukuagent.core.agent.AgentHeartbeat", lambda *args, **kwargs: object())
     monkeypatch.setattr("zukuagent.core.agent.OpenlitTracingService", _FakeTracingService)
+    monkeypatch.setattr("zukuagent.core.agent.CronJobService", _FakeCronService)
 
 
 @pytest.fixture
@@ -200,6 +228,21 @@ async def test_chat_uses_openai_local_runtime(monkeypatch, stub_runtime_services
     assert reply == "local final response"
     assert agent._openai_messages[0]["role"] == "system"
     assert agent._openai_client.calls[0]["model"] == "llama3.2"
+
+
+@pytest.mark.asyncio
+async def test_chat_handles_cron_tool_commands(monkeypatch, stub_runtime_services, stub_google_client):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "cron_enabled", True)
+    agent = ZukuAgent(provider="google")
+
+    created = await agent.chat("/cron create agent '0 9 * * 1-5' 'Send standup summary'")
+    listed = await agent.chat("/cron list")
+    removed = await agent.chat("/cron remove agent-1")
+
+    assert "Cron job created: `agent-1` (agent)." in created
+    assert "agent-1: `0 9 * * 1-5` (agent)" in listed
+    assert "Cron job `agent-1` removed." in removed
 
 
 def test_compress_updates_openai_system_message(tmp_path, monkeypatch, stub_runtime_services, stub_openai_client):
