@@ -2,11 +2,11 @@
 
 import asyncio
 from datetime import UTC, datetime
-from pathlib import Path
 
 from loguru import logger
 
 from zukuagent.core.settings import settings
+from zukuagent.core.storage import StorageBackend, get_storage_backend
 
 
 class AgentHeartbeat:
@@ -17,16 +17,23 @@ class AgentHeartbeat:
     to escalate to a full agent turn (LLM call).
     """
 
-    def __init__(self, interval_minutes: int | None = None, heartbeat_file: str | None = None) -> None:
+    def __init__(
+        self,
+        interval_minutes: int | None = None,
+        heartbeat_file: str | None = None,
+        storage_backend: StorageBackend | None = None,
+    ) -> None:
         """Initialize the heartbeat service.
 
         Args:
             interval_minutes (int): How often the heartbeat should pulse.
             heartbeat_file (str): The local file to check for pending tasks.
+            storage_backend (StorageBackend | None): Optional storage backend override.
 
         """
         self.interval_seconds = (interval_minutes or settings.heartbeat_interval_minutes) * 60
         self.heartbeat_file = heartbeat_file or settings.heartbeat_file
+        self.storage_backend = storage_backend or get_storage_backend()
         self.is_running = False
         self._task: asyncio.Task | None = None
         self._last_pulse: datetime | None = None
@@ -44,11 +51,9 @@ class AgentHeartbeat:
         logger.debug("Heartbeat: Running cheap checks...")
 
         # Pattern 1: Check for HEARTBEAT.md presence and content
-        path = Path(self.heartbeat_file)
-        exists = await asyncio.to_thread(path.exists)
+        exists = await self.storage_backend.exists(self.heartbeat_file)
         if exists:
-            # Use to_thread for blocking file IO in async function to satisfy ruff ASYNC230
-            content = await asyncio.to_thread(path.read_text)
+            content = await self.storage_backend.read_text(self.heartbeat_file)
             if content.strip():
                 logger.info(f"Heartbeat: Found content in {self.heartbeat_file}. Action may be required.")
                 return True

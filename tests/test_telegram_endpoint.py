@@ -201,7 +201,10 @@ async def test_on_pair_paths(endpoint, monkeypatch):
     await endpoint._on_pair(missing_args, _FakeContext(args=[]))
     assert missing_args.message.replies == ["Usage: /pair <device_id>"]
 
-    monkeypatch.setattr(endpoint.pairings, "pair", lambda chat_id, device_id: (True, f"Paired {chat_id} {device_id}"))
+    async def fake_pair(chat_id, device_id):
+        return True, f"Paired {chat_id} {device_id}"
+
+    monkeypatch.setattr(endpoint.pairings, "pair", fake_pair)
     ok_update = _FakeUpdate(chat_id=100)
     await endpoint._on_pair(ok_update, _FakeContext(args=["dev-1"]))
     assert ok_update.message.replies == ["Paired 100 dev-1"]
@@ -214,12 +217,18 @@ async def test_on_message_paths(endpoint, monkeypatch):
     assert disallowed.message.replies == ["This chat is not allowed to use this bot."]
 
     unpaired = _FakeUpdate(chat_id=100, text="hello")
-    monkeypatch.setattr(endpoint.pairings, "get_device", lambda _chat_id: None)
+    async def no_device(_chat_id):
+        return None
+
+    monkeypatch.setattr(endpoint.pairings, "get_device", no_device)
     await endpoint._on_message(unpaired, _FakeContext())
-    assert unpaired.message.replies == ["Pair this chat first with `/pair <device_id>`." ]
+    assert unpaired.message.replies == ["Pair this chat first with `/pair <device_id>`."]
 
     blank = _FakeUpdate(chat_id=100, text="   ")
-    monkeypatch.setattr(endpoint.pairings, "get_device", lambda _chat_id: "dev-1")
+    async def has_device(_chat_id):
+        return "dev-1"
+
+    monkeypatch.setattr(endpoint.pairings, "get_device", has_device)
     await endpoint._on_message(blank, _FakeContext())
     assert blank.message.replies == []
 

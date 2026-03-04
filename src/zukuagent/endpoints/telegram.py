@@ -15,14 +15,8 @@ if TYPE_CHECKING:
     from telegram.ext import ContextTypes
 
 try:
-    from telegram.ext import (
-        ApplicationBuilder,
-        CommandHandler,
-        filters,
-    )
-    from telegram.ext import (
-        MessageHandler as TelegramMessageHandler,
-    )
+    from telegram.ext import ApplicationBuilder, CommandHandler, filters
+    from telegram.ext import MessageHandler as TelegramMessageHandler
 except ImportError:  # pragma: no cover - optional dependency
     ApplicationBuilder = None
     CommandHandler = None
@@ -105,7 +99,7 @@ class TelegramEndpoint:
             return
 
         device_id = context.args[0].strip()
-        ok, message = self.pairings.pair(chat_id=chat_id, device_id=device_id)
+        ok, message = await self.pairings.pair(chat_id=chat_id, device_id=device_id)
         await update.message.reply_text(message)
         if ok:
             logger.info("Chat {} paired to device {}", chat_id, device_id)
@@ -116,7 +110,7 @@ class TelegramEndpoint:
             await update.message.reply_text("This chat is not allowed to use this bot.")
             return
 
-        if self.require_pairing and not self.pairings.get_device(chat_id):
+        if self.require_pairing and not await self.pairings.get_device(chat_id):
             await update.message.reply_text("Pair this chat first with `/pair <device_id>`.")
             return
 

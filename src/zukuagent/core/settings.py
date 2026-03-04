@@ -68,6 +68,11 @@ class Settings:
     # Endpoint Settings
     endpoint_mode: str = "cli"
 
+    # Storage Settings
+    agent_storage: str = "local"
+    agentfs_id: str = "zukuagent"
+    agentfs_db_path: str | None = None
+
     # Telegram Settings
     telegram_bot_token: str | None = None
     telegram_allowed_chat_ids: list[int] | str | None = field(default_factory=list)
@@ -83,6 +88,7 @@ class Settings:
         if not parsed_identity:
             parsed_identity = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
         self.identity_files = parsed_identity
+        self.agent_storage = self.agent_storage.lower().strip()
         self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
 
@@ -107,6 +113,9 @@ class Settings:
             identity_dir=os.getenv("IDENTITY_DIR", "config/identity"),
             identity_files=os.getenv("IDENTITY_FILES"),
             endpoint_mode=os.getenv("ENDPOINT_MODE", "cli"),
+            agent_storage=os.getenv("AGENT_STORAGE", "local"),
+            agentfs_id=os.getenv("AGENTFS_ID", "zukuagent"),
+            agentfs_db_path=os.getenv("AGENTFS_DB_PATH"),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_allowed_chat_ids=os.getenv("TELEGRAM_ALLOWED_CHAT_IDS"),
             telegram_allowed_pairing_devices=os.getenv("TELEGRAM_ALLOWED_PAIRING_DEVICES"),
