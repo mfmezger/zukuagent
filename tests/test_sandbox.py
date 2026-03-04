@@ -115,3 +115,12 @@ def test_main_uses_sandbox_without_initializing_agent(monkeypatch, capsys):
 
     zukuagent.main()
     assert capsys.readouterr().out.strip() == "2"
+
+
+def test_main_sandbox_file_not_found(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["zukuagent", "--sandbox-file", "does-not-exist.py"])
+
+    with pytest.raises(SystemExit):
+        zukuagent.main()
+
+    assert "File not found: does-not-exist.py" in capsys.readouterr().err

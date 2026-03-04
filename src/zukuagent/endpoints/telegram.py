@@ -1,6 +1,7 @@
 """Telegram endpoint integration for ZukuAgent."""
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -14,14 +15,21 @@ if TYPE_CHECKING:
     from telegram.ext import ContextTypes
 
 try:
-    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler as TelegramMessageHandler, filters
+    from telegram.ext import (
+        ApplicationBuilder,
+        CommandHandler,
+        filters,
+    )
+    from telegram.ext import (
+        MessageHandler as TelegramMessageHandler,
+    )
 except ImportError:  # pragma: no cover - optional dependency
     ApplicationBuilder = None
     CommandHandler = None
     TelegramMessageHandler = None
     filters = None
 
-MessageCallback = Callable[[str], Awaitable[str]]
+MessageCallback = Callable[..., Awaitable[str]]
 
 
 class TelegramEndpoint:
@@ -39,6 +47,7 @@ class TelegramEndpoint:
             raise ValueError(msg)
 
         self.message_handler = message_handler
+        self._handler_supports_session_id = self._supports_session_id(message_handler)
         self.allowed_chat_ids = set(settings.telegram_allowed_chat_ids)
         self.require_pairing = settings.telegram_require_pairing
         self.pairings = PairingRegistry(
@@ -115,10 +124,23 @@ class TelegramEndpoint:
         if not text.strip():
             return
 
-        response = await self.message_handler(text)
+        if self._handler_supports_session_id:
+            response = await self.message_handler(text, session_id=str(chat_id))
+        else:
+            response = await self.message_handler(text)
         await update.message.reply_text(response)
 
     def _is_chat_allowed(self, chat_id: int) -> bool:
         if not self.allowed_chat_ids:
             return True
         return chat_id in self.allowed_chat_ids
+
+    @staticmethod
+    def _supports_session_id(handler: MessageCallback) -> bool:
+        """Detect whether the message handler accepts a `session_id` keyword argument."""
+        try:
+            signature = inspect.signature(handler)
+        except (TypeError, ValueError):
+            return False
+        parameters = signature.parameters.values()
+        return any(param.kind == inspect.Parameter.VAR_KEYWORD or param.name == "session_id" for param in parameters)

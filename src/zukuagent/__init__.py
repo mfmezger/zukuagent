@@ -33,7 +33,10 @@ def main() -> None:
     if args.sandbox_code or args.sandbox_file:
         code = args.sandbox_code
         if args.sandbox_file:
-            code = Path(args.sandbox_file).read_text(encoding="utf-8")
+            try:
+                code = Path(args.sandbox_file).read_text(encoding="utf-8")
+            except FileNotFoundError:
+                parser.error(f"File not found: {args.sandbox_file}")
 
         sandbox = MontySandboxService(type_check=args.sandbox_type_check)
         result = sandbox.run_code(code)

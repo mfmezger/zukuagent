@@ -228,6 +228,24 @@ async def test_on_message_paths(endpoint, monkeypatch):
     assert normal.message.replies == ["echo:ping"]
 
 
+@pytest.mark.asyncio
+async def test_on_message_passes_session_id_when_supported(monkeypatch, tmp_path, fake_telegram_api):
+    monkeypatch.setattr(telegram_module.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram_module.settings, "telegram_allowed_chat_ids", [100])
+    monkeypatch.setattr(telegram_module.settings, "telegram_require_pairing", False)
+    monkeypatch.setattr(telegram_module.settings, "telegram_pairings_file", str(tmp_path / "pairings.json"))
+    monkeypatch.setattr(telegram_module.settings, "telegram_allowed_pairing_devices", ["dev-1"])
+
+    async def handler(message: str, *, session_id: str | None = None) -> str:
+        return f"{session_id}:{message}"
+
+    endpoint = TelegramEndpoint(message_handler=handler)
+    update = _FakeUpdate(chat_id=100, text="ping")
+    await endpoint._on_message(update, _FakeContext())
+
+    assert update.message.replies == ["100:ping"]
+
+
 def test_is_chat_allowed(endpoint, monkeypatch):
     monkeypatch.setattr(endpoint, "allowed_chat_ids", set())
     assert endpoint._is_chat_allowed(1) is True

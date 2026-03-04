@@ -89,6 +89,33 @@ async def test_openrouter_executes_sandbox_tool(monkeypatch, tmp_path, stub_runt
     assert "sum=5" in tool_messages[0]["content"]
 
 
+@pytest.mark.asyncio
+async def test_openrouter_uses_separate_history_per_session(monkeypatch, tmp_path, stub_runtime_services):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(ZukuAgent, "_find_project_root", lambda self: tmp_path)
+    monkeypatch.setattr(settings, "identity_dir", ".")
+    monkeypatch.setattr(settings, "identity_files", ["IDENTITY.md"])
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("You are Zuku.", encoding="utf-8")
+
+    agent = ZukuAgent(provider="openrouter")
+
+    async def fake_chat_openrouter_with_tools(history):
+        history.append({"role": "assistant", "content": "ok"})
+        return "ok"
+
+    monkeypatch.setattr(agent, "_chat_openrouter_with_tools", fake_chat_openrouter_with_tools)
+
+    await agent.chat("hi from chat 1", session_id="chat-1")
+    await agent.chat("hi from chat 2", session_id="chat-2")
+
+    history_1 = agent._openrouter_session_histories["chat-1"]
+    history_2 = agent._openrouter_session_histories["chat-2"]
+    assert [item["content"] for item in history_1 if item["role"] == "user"] == ["hi from chat 1"]
+    assert [item["content"] for item in history_2 if item["role"] == "user"] == ["hi from chat 2"]
+
+
 def test_run_tool_call_rejects_invalid_inputs(monkeypatch, tmp_path, stub_runtime_services):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
