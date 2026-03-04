@@ -201,7 +201,10 @@ async def test_on_pair_paths(endpoint, monkeypatch):
     await endpoint._on_pair(missing_args, _FakeContext(args=[]))
     assert missing_args.message.replies == ["Usage: /pair <device_id>"]
 
-    monkeypatch.setattr(endpoint.pairings, "pair", lambda chat_id, device_id: (True, f"Paired {chat_id} {device_id}"))
+    async def fake_pair(chat_id, device_id):
+        return True, f"Paired {chat_id} {device_id}"
+
+    monkeypatch.setattr(endpoint.pairings, "pair", fake_pair)
     ok_update = _FakeUpdate(chat_id=100)
     await endpoint._on_pair(ok_update, _FakeContext(args=["dev-1"]))
     assert ok_update.message.replies == ["Paired 100 dev-1"]
@@ -214,18 +217,42 @@ async def test_on_message_paths(endpoint, monkeypatch):
     assert disallowed.message.replies == ["This chat is not allowed to use this bot."]
 
     unpaired = _FakeUpdate(chat_id=100, text="hello")
-    monkeypatch.setattr(endpoint.pairings, "get_device", lambda _chat_id: None)
+    async def no_device(_chat_id):
+        return None
+
+    monkeypatch.setattr(endpoint.pairings, "get_device", no_device)
     await endpoint._on_message(unpaired, _FakeContext())
-    assert unpaired.message.replies == ["Pair this chat first with `/pair <device_id>`." ]
+    assert unpaired.message.replies == ["Pair this chat first with `/pair <device_id>`."]
 
     blank = _FakeUpdate(chat_id=100, text="   ")
-    monkeypatch.setattr(endpoint.pairings, "get_device", lambda _chat_id: "dev-1")
+    async def has_device(_chat_id):
+        return "dev-1"
+
+    monkeypatch.setattr(endpoint.pairings, "get_device", has_device)
     await endpoint._on_message(blank, _FakeContext())
     assert blank.message.replies == []
 
     normal = _FakeUpdate(chat_id=100, text="ping")
     await endpoint._on_message(normal, _FakeContext())
     assert normal.message.replies == ["echo:ping"]
+
+
+@pytest.mark.asyncio
+async def test_on_message_passes_session_id_when_supported(monkeypatch, tmp_path, fake_telegram_api):
+    monkeypatch.setattr(telegram_module.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram_module.settings, "telegram_allowed_chat_ids", [100])
+    monkeypatch.setattr(telegram_module.settings, "telegram_require_pairing", False)
+    monkeypatch.setattr(telegram_module.settings, "telegram_pairings_file", str(tmp_path / "pairings.json"))
+    monkeypatch.setattr(telegram_module.settings, "telegram_allowed_pairing_devices", ["dev-1"])
+
+    async def handler(message: str, *, session_id: str | None = None) -> str:
+        return f"{session_id}:{message}"
+
+    endpoint = TelegramEndpoint(message_handler=handler)
+    update = _FakeUpdate(chat_id=100, text="ping")
+    await endpoint._on_message(update, _FakeContext())
+
+    assert update.message.replies == ["100:ping"]
 
 
 def test_is_chat_allowed(endpoint, monkeypatch):

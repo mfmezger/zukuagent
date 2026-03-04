@@ -27,3 +27,9 @@ def test_list_inputs_are_preserved():
     assert settings.telegram_allowed_pairing_devices == ["dev-1", "dev-2"]
     assert settings.identity_files == ["IDENTITY.md"]
     assert settings.telegram_require_pairing is False
+
+
+def test_storage_settings_normalization():
+    settings = Settings(agent_storage=" AGENTFS ")
+
+    assert settings.agent_storage == "agentfs"

@@ -43,11 +43,13 @@ class Settings:
     # API Keys
     google_api_key: str | None = None
     openai_api_key: str | None = None
+    openrouter_api_key: str | None = None
 
     # Runtime Settings
     default_provider: str = "google"
     google_model: str = "gemini-2.5-flash"
     openai_model: str = "gpt-4o-mini"
+    openrouter_model: str = "anthropic/claude-3-haiku"
     openai_base_url: str = "http://localhost:11434/v1"
     openlit_enabled: bool | str = False
     openlit_otlp_endpoint: str = "http://localhost:4318"
@@ -72,6 +74,10 @@ class Settings:
     cron_agent_cli: str = "zukuagent"
     cron_script_sandbox_mode: str = "restricted"
     cron_monty_template: str = "monty sandbox run -- {command}"
+    # Storage Settings
+    agent_storage: str = "local"
+    agentfs_id: str = "zukuagent"
+    agentfs_db_path: str | None = None
 
     # Telegram Settings
     telegram_bot_token: str | None = None
@@ -88,6 +94,7 @@ class Settings:
         if not parsed_identity:
             parsed_identity = ["IDENTITY.md", "SOUL.md", "AGENTS.md", "USER.md"]
         self.identity_files = parsed_identity
+        self.agent_storage = self.agent_storage.lower().strip()
         self.openlit_enabled = _parse_bool(self.openlit_enabled, default=False)
         self.telegram_require_pairing = _parse_bool(self.telegram_require_pairing, default=True)
         self.cron_enabled = _parse_bool(self.cron_enabled, default=True)
@@ -99,9 +106,11 @@ class Settings:
         return cls(
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
             default_provider=os.getenv("DEFAULT_PROVIDER", "google"),
             google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            openrouter_model=os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1"),
             openlit_enabled=os.getenv("OPENLIT_ENABLED", "false"),
             openlit_otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
@@ -116,6 +125,9 @@ class Settings:
             cron_agent_cli=os.getenv("CRON_AGENT_CLI", "zukuagent"),
             cron_script_sandbox_mode=os.getenv("CRON_SCRIPT_SANDBOX_MODE", "restricted"),
             cron_monty_template=os.getenv("CRON_MONTY_TEMPLATE", "monty sandbox run -- {command}"),
+            agent_storage=os.getenv("AGENT_STORAGE", "local"),
+            agentfs_id=os.getenv("AGENTFS_ID", "zukuagent"),
+            agentfs_db_path=os.getenv("AGENTFS_DB_PATH"),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_allowed_chat_ids=os.getenv("TELEGRAM_ALLOWED_CHAT_IDS"),
             telegram_allowed_pairing_devices=os.getenv("TELEGRAM_ALLOWED_PAIRING_DEVICES"),

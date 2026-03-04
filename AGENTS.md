@@ -17,6 +17,7 @@ Use `uv` for environment and command execution.
 - `uv run pytest tests/test_settings.py -k csv`: run a focused test subset.
 - `uv run ruff check . --fix`: lint and apply safe fixes.
 - `uv run ruff format .`: format code.
+- `uvx ruff check . --fix`: fallback lint command when `uv run ruff ...` is unavailable in the environment.
 - `uv run zukuagent --endpoint telegram`: run the Telegram endpoint locally.
 - `pre-commit run --all-files`: run all configured hooks before pushing.
 

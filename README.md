@@ -55,6 +55,25 @@ OPENLIT_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+Storage backend config:
+
+```bash
+# Default
+AGENT_STORAGE=local
+
+# Optional: Turso AgentFS
+AGENT_STORAGE=agentfs
+AGENTFS_ID=zukuagent
+# Optional sqlite path used by AgentFS locally
+# AGENTFS_DB_PATH=.agentfs/agent.db
+```
+
+If using `AGENT_STORAGE=agentfs`, install the SDK:
+
+```bash
+uv add agentfs-sdk
+```
+
 ## Development Setup
 
 To set up the project locally, install `pre-commit` globally using `uv` to manage the git hooks:
@@ -122,6 +141,24 @@ CRON_LOG_DIR=.zukuagent/cron
 CRON_AGENT_CLI=zukuagent
 CRON_SCRIPT_SANDBOX_MODE=restricted
 CRON_MONTY_TEMPLATE="monty sandbox run -- {command}"
+## Sandboxed Code Execution (Monty)
+
+Run Python code in a restricted Monty sandbox directly from the CLI:
+
+```bash
+uv run zukuagent --sandbox-code "from pydantic import BaseModel; class User(BaseModel): name: str; User(name='zuku')"
+```
+
+Or execute a file:
+
+```bash
+uv run zukuagent --sandbox-file scripts/example.py
+```
+
+Optional type-checking in the sandbox:
+
+```bash
+uv run zukuagent --sandbox-file scripts/example.py --sandbox-type-check
 ```
 
 ## Local OpenLIT Container
