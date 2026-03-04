@@ -140,7 +140,12 @@ CRON_ENABLED=true
 CRON_LOG_DIR=.zukuagent/cron
 CRON_AGENT_CLI=zukuagent
 CRON_SCRIPT_SANDBOX_MODE=restricted
-CRON_MONTY_TEMPLATE="monty sandbox run -- {command}"
+CRON_MONTY_TEMPLATE=monty sandbox run -- {command}
+CRON_ALLOWED_SESSION_IDS=123456789
+```
+
+`/cron` is always available in local CLI sessions. For remote sessions (for example Telegram), only session IDs listed in `CRON_ALLOWED_SESSION_IDS` can use `/cron`.
+
 ## Sandboxed Code Execution (Monty)
 
 Run Python code in a restricted Monty sandbox directly from the CLI:

@@ -51,6 +51,7 @@ class CronJobService:
         self._validate_single_line("message", message)
         self._validate_single_line("provider", provider)
         self._validate_single_line("model_name", model_name)
+        agent_cli_command = self._build_cli_command(settings.cron_agent_cli)
         job_id = uuid.uuid4().hex[:12]
         log_file = self.log_dir / f"{job_id}.log"
         quoted_message = shlex.quote(message)
@@ -58,10 +59,9 @@ class CronJobService:
         model_part = f"--model {shlex.quote(model_name)}" if model_name else ""
         command = (
             f"cd {shlex.quote(str(self.project_root))} && "
-            f"{settings.cron_agent_cli} --endpoint cli {provider_part} {model_part} --message {quoted_message} "
+            f"{agent_cli_command} --endpoint cli {provider_part} {model_part} --message {quoted_message} "
             f">> {shlex.quote(str(log_file))} 2>&1"
         )
-        command = " ".join(command.split())
         line = self._build_line(schedule=schedule, command=command, job_id=job_id, mode="agent")
         self._append_line(line)
         return CronJob(job_id=job_id, schedule=schedule, mode="agent", command=command, raw_line=line)
@@ -120,10 +120,9 @@ class CronJobService:
         if sandbox == "monty":
             inner = f"/bin/bash -lc {quoted_script}"
             escaped = shlex.quote(inner)
-            return settings.cron_monty_template.format(command=escaped)
+            return self._render_command_template(settings.cron_monty_template, escaped)
         if sandbox == "restricted":
-            restricted = f"PATH=/usr/bin:/bin /bin/bash -lc {quoted_script}"
-            return f"env -i HOME=$HOME {restricted}"
+            return f'env -i HOME="${{HOME:-/tmp}}" PATH=/usr/bin:/bin /bin/bash -lc {quoted_script}'
         msg = f"Unsupported sandbox mode: {sandbox}. Use one of: restricted, monty, none."
         raise ValueError(msg)
 
@@ -141,6 +140,39 @@ class CronJobService:
         if "\n" in value or "\r" in value:
             msg = f"{name} must be a single line."
             raise ValueError(msg)
+
+    def _build_cli_command(self, cli_value: str) -> str:
+        self._validate_single_line("CRON_AGENT_CLI", cli_value)
+        try:
+            parts = shlex.split(cli_value)
+        except ValueError as error:
+            msg = f"Invalid CRON_AGENT_CLI value: {error}"
+            raise ValueError(msg) from error
+        if not parts:
+            msg = "CRON_AGENT_CLI must not be empty."
+            raise ValueError(msg)
+        return shlex.join(parts)
+
+    def _render_command_template(self, template: str, command: str) -> str:
+        self._validate_single_line("CRON_MONTY_TEMPLATE", template)
+        marker = "__ZUKU_CRON_COMMAND__"
+        if "{command}" not in template:
+            msg = "CRON_MONTY_TEMPLATE must include {command}."
+            raise ValueError(msg)
+        if template.count("{command}") != 1:
+            msg = "CRON_MONTY_TEMPLATE must include {command} exactly once."
+            raise ValueError(msg)
+        rendered = template.replace("{command}", marker)
+        try:
+            parts = shlex.split(rendered)
+        except ValueError as error:
+            msg = f"Invalid CRON_MONTY_TEMPLATE value: {error}"
+            raise ValueError(msg) from error
+        if marker not in parts:
+            msg = "CRON_MONTY_TEMPLATE must place {command} as a shell argument."
+            raise ValueError(msg)
+        safe_parts = [command if part == marker else shlex.quote(part) for part in parts]
+        return " ".join(safe_parts)
 
     def _append_line(self, line: str) -> None:
         lines = self._read_crontab_lines()

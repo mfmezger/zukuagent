@@ -234,6 +234,7 @@ async def test_chat_uses_openai_local_runtime(monkeypatch, stub_runtime_services
 async def test_chat_handles_cron_tool_commands(monkeypatch, stub_runtime_services, stub_google_client):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(settings, "cron_enabled", True)
+    monkeypatch.setattr(settings, "cron_allowed_session_ids", [])
     agent = ZukuAgent(provider="google")
 
     created = await agent.chat("/cron create agent '0 9 * * 1-5' 'Send standup summary'")
@@ -249,6 +250,7 @@ async def test_chat_handles_cron_tool_commands(monkeypatch, stub_runtime_service
 async def test_chat_handles_cron_script_command_with_arguments(monkeypatch, stub_runtime_services, stub_google_client):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(settings, "cron_enabled", True)
+    monkeypatch.setattr(settings, "cron_allowed_session_ids", [])
     agent = ZukuAgent(provider="google")
 
     created = await agent.chat("/cron create script '*/10 * * * *' /opt/jobs/collect.sh --fast --sandbox=none")
@@ -261,11 +263,36 @@ async def test_chat_handles_cron_script_command_with_arguments(monkeypatch, stub
 async def test_chat_rejects_invalid_cron_script_options(monkeypatch, stub_runtime_services, stub_google_client):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(settings, "cron_enabled", True)
+    monkeypatch.setattr(settings, "cron_allowed_session_ids", [])
     agent = ZukuAgent(provider="google")
 
     response = await agent.chat("/cron create script '*/10 * * * *' /opt/jobs/collect.sh --sandbox=none --sandbox=monty")
 
     assert "Invalid command: Only one --sandbox option is allowed and it must be last." in response
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_cron_for_unauthorized_session(monkeypatch, stub_runtime_services, stub_google_client):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "cron_enabled", True)
+    monkeypatch.setattr(settings, "cron_allowed_session_ids", ["12345"])
+    agent = ZukuAgent(provider="google")
+
+    response = await agent.chat("/cron list", session_id="99999")
+
+    assert response == "You are not authorized to use `/cron` in this session."
+
+
+@pytest.mark.asyncio
+async def test_chat_allows_cron_for_authorized_session(monkeypatch, stub_runtime_services, stub_google_client):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "cron_enabled", True)
+    monkeypatch.setattr(settings, "cron_allowed_session_ids", ["12345"])
+    agent = ZukuAgent(provider="google")
+
+    response = await agent.chat("/cron list", session_id="12345")
+
+    assert response == "No Zuku-managed cron jobs found."
 
 
 def test_compress_updates_openai_system_message(tmp_path, monkeypatch, stub_runtime_services, stub_openai_client):

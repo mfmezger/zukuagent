@@ -240,7 +240,7 @@ class ZukuAgent:
 
     async def chat(self, message: str, session_id: str | None = None) -> str:
         """Send a message to the configured runtime and return the response."""
-        command_response = self._handle_tool_command(message)
+        command_response = self._handle_tool_command(message, session_id=session_id)
         if command_response is not None:
             return command_response
 
@@ -277,11 +277,13 @@ class ZukuAgent:
         self._compress_skills_after_use()
         return response_text
 
-    def _handle_tool_command(self, message: str) -> str | None:
+    def _handle_tool_command(self, message: str, *, session_id: str | None) -> str | None:
         if not message.startswith("/cron"):
             return None
         if not settings.cron_enabled:
             return "Cron tool is disabled by configuration (`CRON_ENABLED=false`)."
+        if not self._is_cron_authorized(session_id):
+            return "You are not authorized to use `/cron` in this session."
 
         try:
             args = shlex.split(message)
@@ -290,9 +292,15 @@ class ZukuAgent:
 
         if not args or args[0] != "/cron":
             return None
-        if len(args) == 1:
-            return self._cron_help_text()
-        return self._dispatch_cron_action(args)
+        response = self._cron_help_text()
+        if len(args) > 1:
+            response = self._dispatch_cron_action(args)
+        return response
+
+    def _is_cron_authorized(self, session_id: str | None) -> bool:
+        if session_id is None:
+            return True
+        return session_id in settings.cron_allowed_session_ids
 
     def _dispatch_cron_action(self, args: list[str]) -> str:
         action = args[1]

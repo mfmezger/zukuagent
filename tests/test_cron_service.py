@@ -58,6 +58,17 @@ def test_create_agent_job_adds_tagged_crontab_line(tmp_path: Path, monkeypatch, 
     assert "--message 'daily summary'" in job.raw_line
 
 
+def test_create_agent_job_preserves_quoted_whitespace_and_cli_args(tmp_path: Path, monkeypatch, fake_crontab) -> None:
+    monkeypatch.setattr(settings, "cron_log_dir", ".zukuagent/cron")
+    monkeypatch.setattr(settings, "cron_agent_cli", "uv run zukuagent")
+    service = CronJobService(project_root=tmp_path)
+
+    job = service.create_agent_job(schedule="0 9 * * 1-5", message="hello  world", provider="google", model_name="gemini-2.5-flash")
+
+    assert "uv run zukuagent --endpoint cli" in job.raw_line
+    assert "--message 'hello  world'" in job.raw_line
+
+
 def test_create_script_job_uses_restricted_sandbox_by_default(tmp_path: Path, monkeypatch, fake_crontab) -> None:
     monkeypatch.setattr(settings, "cron_script_sandbox_mode", "restricted")
     service = CronJobService(project_root=tmp_path)
@@ -65,7 +76,7 @@ def test_create_script_job_uses_restricted_sandbox_by_default(tmp_path: Path, mo
     job = service.create_script_job(schedule="*/30 * * * *", script_command="/opt/jobs/run.sh", sandbox=None)
 
     assert job.mode == "script-restricted"
-    assert "env -i HOME=$HOME PATH=/usr/bin:/bin /bin/bash -lc /opt/jobs/run.sh" in job.raw_line
+    assert 'env -i HOME="${HOME:-/tmp}" PATH=/usr/bin:/bin /bin/bash -lc /opt/jobs/run.sh' in job.raw_line
 
 
 def test_list_and_remove_jobs(tmp_path: Path, fake_crontab) -> None:
@@ -106,3 +117,11 @@ def test_create_job_rejects_invalid_schedule(tmp_path: Path, fake_crontab) -> No
 
     with pytest.raises(ValueError, match="five cron fields"):
         service.create_script_job(schedule="@daily", script_command="/opt/jobs/run.sh", sandbox="restricted")
+
+
+def test_create_job_rejects_invalid_monty_template(tmp_path: Path, monkeypatch, fake_crontab) -> None:
+    monkeypatch.setattr(settings, "cron_monty_template", "monty sandbox run --")
+    service = CronJobService(project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="must include \\{command\\}"):
+        service.create_script_job(schedule="0 * * * *", script_command="/tmp/a.sh", sandbox="monty")
